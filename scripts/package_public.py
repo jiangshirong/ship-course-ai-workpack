@@ -3,7 +3,7 @@ import argparse,zipfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
-FILES=["README.md","AGENTS.md","LICENSE","NOTICE.md",".gitignore","requirements.txt"]
+FILES=["README.md","README.en.md","README.ru.md","AGENTS.md","LICENSE","NOTICE.md",".gitignore","requirements.txt"]
 DIRS=["docs","templates","reference_code","data","examples","scripts"]
 def main():
     p=argparse.ArgumentParser(description=__doc__)

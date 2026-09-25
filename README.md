@@ -1,40 +1,24 @@
-# Ship Course AI Work Package / Судовые курсовые работы / 船舶课程作业 AI 工作包
+# 船舶课程作业 AI 工作包
+
+**语言 / Languages / Языки：** [中文](README.md) · [English](README.en.md) · [Русский](README.ru.md)
 
 <p align="center">
   <img src="docs/assets/0.png" alt="课程项目截图 1" width="420">
   <br>
-  <em>这个文件内一定发生过什么……<br>Something definitely happened inside this file…<br>Здесь наверняка что-то произошло…</em>
+  <em>这个文件内一定发生过什么……</em>
 </p>
 
 <p align="center">
   <img src="docs/assets/1.png" alt="课程项目截图 2" width="260">
   <br>
-  <em>这个文件内一定发生过什么……<br>Something definitely happened inside this file…<br>Здесь наверняка что-то произошло…</em>
+  <em>这个文件内一定发生过什么……</em>
 </p>
-
-## 中文
 
 这是广东海洋大学圣彼得堡船舶与海洋学院《船舶设计优化》和《船舶结构技术状况控制》两门课的课程设计工作包。
 
 将老师发的每个人的参数表交给 AI，并说明自己是谁，即可使用 AI Agent 按流程完成课设。最终结果是一份 CAD 文件和一份 Excel 表格。AI 仍需根据当年教师要求重新设计、计算和检查；本包中的历史案例只是参考，不保证替代教师审核或完整工程审查。
 
-## Русский
-
-Это открытый рабочий пакет для курсовых работ по дисциплинам «Оптимизация проектирования судна» и «Контроль технического состояния судовых конструкций» Школы судостроения и морской техники Санкт-Петербургского университета при Гуандунском океанологическом университете.
-
-Передайте AI таблицу параметров, выданную преподавателем, и укажите, кто вы. AI Agent выполнит этапы проектирования, расчёта и подготовки чертежей. Результат — один CAD-файл и одна таблица Excel. Исторические примеры предназначены для повторного использования и требуют проверки по требованиям преподавателя текущего года.
-
-## English
-
-This open work package supports the course-design assignments for **Ship Design Optimization** and **Control of the Technical Condition of Ship Structures** at the St. Petersburg Institute of Shipbuilding and Ocean Engineering, Guangdong Ocean University.
-
-Give the AI the parameter table supplied by the instructor and identify yourself. An AI Agent can then follow the package workflow to design, calculate, check, and prepare the assignment. The final deliverables are one CAD file and one Excel workbook. Historical examples are reusable references and must still be checked against the instructor's requirements for the current year.
-
-The detailed workflow and safeguards below are maintained in Chinese; the scripts and file layout are language-independent.
-
----
-
-## 详细说明（中文）
+## 详细说明
 
 下载本文件夹，把老师发的个人参数表交给能操作本地文件的 AI，按流程完成《船舶设计优化及船舶结构技术状况控制》的个人作业：**一个 DWG 和一份俄语 XLSX**。
 
