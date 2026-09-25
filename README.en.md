@@ -4,14 +4,12 @@
 
 <p align="center">
   <img src="docs/assets/0.png" alt="Course project screenshot 1" width="420">
-  <br>
-  <em>Something definitely happened inside this file…</em>
 </p>
 
 <p align="center">
   <img src="docs/assets/1.png" alt="Course project screenshot 2" width="260">
   <br>
-  <em>Something definitely happened inside this file…</em>
+  <em>Something definitely happened inside this folder…</em>
 </p>
 
 This open work package supports the course-design assignments for **Ship Design Optimization** and **Control of the Technical Condition of Ship Structures** at the St. Petersburg Institute of Shipbuilding and Ocean Engineering, Guangdong Ocean University.
@@ -30,4 +28,3 @@ The package is a reusable engineering workflow, not a one-click name replacement
 AutoCAD is optional for DXF development and geometry checks. Install a verified DWG engine only when the instructor requires a real DWG deliverable. See `docs/环境与工具.md` for the tiered CAD workflow.
 
 The detailed workflow is maintained in the Chinese README and linked documentation: [open the Chinese README](README.md).
-

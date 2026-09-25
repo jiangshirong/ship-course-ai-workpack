@@ -4,14 +4,12 @@
 
 <p align="center">
   <img src="docs/assets/0.png" alt="课程项目截图 1" width="420">
-  <br>
-  <em>这个文件内一定发生过什么……</em>
 </p>
 
 <p align="center">
   <img src="docs/assets/1.png" alt="课程项目截图 2" width="260">
   <br>
-  <em>这个文件内一定发生过什么……</em>
+  <em>这个文件夹内一定发生过什么……</em>
 </p>
 
 这是广东海洋大学圣彼得堡船舶与海洋学院《船舶设计优化》和《船舶结构技术状况控制》两门课的课程设计工作包。
