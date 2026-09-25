@@ -28,3 +28,11 @@ The package is a reusable engineering workflow, not a one-click name replacement
 AutoCAD is optional for DXF development and geometry checks. Install a verified DWG engine only when the instructor requires a real DWG deliverable. See `docs/环境与工具.md` for the tiered CAD workflow.
 
 The detailed workflow is maintained in the Chinese README and linked documentation: [open the Chinese README](README.md).
+
+## Praise from the instructor
+
+<p align="center">
+  <img src="docs/assets/teacher-praise.jpg" alt="Praise from the instructor" width="720">
+  <br>
+  <em>Praise from the instructor</em>
+</p>
