@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-24",
+  "assignment_regeneration_performed": false,
+  "runtime_tests_performed": false,
+  "assets_extracted": [
+    "templates/T/example_results.json",
+    "templates/T/cad_manifest.json",
+    "templates/T/corrected_section_results.json",
+    "templates/T/cell_mapping.json",
+    "templates/C_longitudinal/model.json",
+    "templates/C_longitudinal/cad_manifest.json",
+    "templates/C_transverse/model.json",
+    "templates/C_transverse/cad_manifest.json"
+  ],
+  "recipes": [
+    "T/workbook_recipe.mjs.txt",
+    "T/cad_recipe.py.txt",
+    "T/check_recipe.py.txt",
+    "T/corrected_section_recipe.mjs.txt",
+    "T/corrected_cad_recipe.py.txt",
+    "C_longitudinal/calculation_recipe.py.txt",
+    "C_longitudinal/cad_recipe.py.txt",
+    "C_longitudinal/check_recipe.py.txt",
+    "C_longitudinal/workbook_recipe.mjs.txt",
+    "C_transverse/calculation_recipe.py.txt",
+    "C_transverse/cad_recipe.py.txt",
+    "C_transverse/workbook_recipe.mjs.txt"
+  ],
+  "personal_reference": "local_reference/manifest.json",
+  "notes": [
+    "未生成新作业",
+    "JSON保留历史公式和缓存，缓存不是新输入的计算结果",
+    "参考源码为AI适配素材，非通用生成器"
+  ]
+}

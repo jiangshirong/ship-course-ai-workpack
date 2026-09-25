@@ -1,0 +1,98 @@
+# Ship Course AI Work Package / Судовые курсовые работы / 船舶课程作业 AI 工作包
+
+<p align="center">
+  <img src="docs/assets/0.png" alt="课程项目截图 1" width="420">
+  <br>
+  <em>这个文件内一定发生过什么……<br>Something definitely happened inside this file…<br>Здесь наверняка что-то произошло…</em>
+</p>
+
+<p align="center">
+  <img src="docs/assets/1.png" alt="课程项目截图 2" width="260">
+  <br>
+  <em>这个文件内一定发生过什么……<br>Something definitely happened inside this file…<br>Здесь наверняка что-то произошло…</em>
+</p>
+
+## 中文
+
+这是广东海洋大学圣彼得堡船舶与海洋学院《船舶设计优化》和《船舶结构技术状况控制》两门课的课程设计工作包。
+
+将老师发的每个人的参数表交给 AI，并说明自己是谁，即可使用 AI Agent 按流程完成课设。最终结果是一份 CAD 文件和一份 Excel 表格。AI 仍需根据当年教师要求重新设计、计算和检查；本包中的历史案例只是参考，不保证替代教师审核或完整工程审查。
+
+## Русский
+
+Это открытый рабочий пакет для курсовых работ по дисциплинам «Оптимизация проектирования судна» и «Контроль технического состояния судовых конструкций» Школы судостроения и морской техники Санкт-Петербургского университета при Гуандунском океанологическом университете.
+
+Передайте AI таблицу параметров, выданную преподавателем, и укажите, кто вы. AI Agent выполнит этапы проектирования, расчёта и подготовки чертежей. Результат — один CAD-файл и одна таблица Excel. Исторические примеры предназначены для повторного использования и требуют проверки по требованиям преподавателя текущего года.
+
+## English
+
+This open work package supports the course-design assignments for **Ship Design Optimization** and **Control of the Technical Condition of Ship Structures** at the St. Petersburg Institute of Shipbuilding and Ocean Engineering, Guangdong Ocean University.
+
+Give the AI the parameter table supplied by the instructor and identify yourself. An AI Agent can then follow the package workflow to design, calculate, check, and prepare the assignment. The final deliverables are one CAD file and one Excel workbook. Historical examples are reusable references and must still be checked against the instructor's requirements for the current year.
+
+The detailed workflow and safeguards below are maintained in Chinese; the scripts and file layout are language-independent.
+
+---
+
+## 详细说明（中文）
+
+下载本文件夹，把老师发的个人参数表交给能操作本地文件的 AI，按流程完成《船舶设计优化及船舶结构技术状况控制》的个人作业：**一个 DWG 和一份俄语 XLSX**。
+
+这是从2026年课程作业与教师反馈整理的方法、公式和制图参考包。AI需要根据新参数设计布置、重新计算和制图；不是替换姓名即可运行的一键生成器。现有案例不保证满足未来教师的全部要求，课程计算也不等于完整工程设计审查。
+
+**版本状态：2026-09-25 v7。** 已提供可运行的限定公式重算器、T型参数化草稿、16组骨材选型/检查、XLSX缓存验收、T/C型交付制图规范和分层 CAD/DWG 检查流程。辅助工具已做针对性回归；仍需AI完成本船布置、荷载与制图。实际范围见[版本记录](docs/版本记录.md)。
+
+**无Excel也可运行的T型计算入口：** 先让AI按[字段契约](docs/输入字段契约.md)将老师输入和本次有依据的设计假设整理成`work/姓名/t_model.json`，再运行：
+
+```text
+python scripts/prepare_t_model.py work/姓名/t_model.json work/姓名/model.json
+python scripts/recalculate.py work/姓名/model.json work/姓名/results.json
+python scripts/check_t_assignment.py work/姓名/model.json --report work/姓名/checks.json
+python scripts/check_delivery.py outputs/姓名 姓名
+```
+
+检查失败时修正设计，再用`select_profiles.py`比较全部16组候选并同步模型/CAD。最终XLSX必须通过`validate_xlsx.py`的缓存检查。先用包内工具；不得另造未经验证的公式引擎充当交付依据。工具不支持时应报出具体缺项或以测试扩展，不吞错、不伪造成功。
+
+## 开始使用
+1. 准备能读写本地文件、运行程序的 AI Agent 和 Python。没有 AutoCAD 也可以完成 DXF 开发、几何检查和视觉复核；如果老师要求真实 DWG，再安装 AutoCAD 或其他已验证的 DWG 保存引擎。CAD MCP可以提高自动化程度，但不是开发 DXF 的必要条件。详见[环境与工具](docs/环境与工具.md)。纯文字聊天不能自动完成全部步骤。
+2. 把老师当年的参数表放入 `inputs/`，附上当年的新增要求。**公开包不含个人参数，inputs为空是正常的**；examples仅为格式/工具示例，不能代替自己的数据。详见[输入说明](inputs/README.md)。
+3. 让AI打开整个项目，发送下面的提示词，替换姓名：
+
+```text
+先阅读AGENTS.md和docs/完整流程.md，完成我的课程作业。
+再阅读docs/交付格式与船型制图规范.md，先确定本船适用的T/C分支和交付视图。
+参数表在inputs/，我的姓名是【原文姓名】，只提取我的一行。
+按老师当年的要求和本包依据确定T/C型及各部位骨架。
+主尺度、布置、跨度、载荷、板厚、型材和构件数量均需重新确定；
+不得只换姓名或沿用历史缓存。
+请自行查明资料能解决的问题，确实缺少关键输入时再说明缺什么。
+最终在outputs/我的姓名/只交付一个DWG和一份俄语XLSX，
+姓名使用原本俄文，不加RU；中间文件留在work/。
+按项目检查清单执行，明确说明没有完成的检查。
+```
+
+## 目录
+| 位置 | 用途 |
+|---|---|
+| [AGENTS.md](AGENTS.md) | AI执行入口，不需要旧对话 |
+| [完整流程](docs/完整流程.md) | 输入→设计→计算→制图→交付 |
+| [分支入口](templates/README.md) | T、C纵骨架、C横骨架及依赖说明 |
+| [教师反馈](docs/教师反馈与计算约束.md) | 必须吸收的纠错 |
+| [交付格式与船型制图规范](docs/交付格式与船型制图规范.md) | 两个作业对话中确认的 T/C 图纸、Excel 与文件格式 |
+| [骨架依据](docs/骨架选择依据.md) | 学校优先的资料研究及证据边界 |
+| [环境与工具](docs/环境与工具.md) | 公开依赖、辅助脚本与重算要求 |
+| [公式重算与验证](docs/公式引擎与验证.md) | 没有Excel时计算、保存新缓存及明确限制 |
+| [T型参数化](docs/T型参数化.md) | 板带、内舷侧、压力分区与型材关联 |
+| [输入字段契约](docs/输入字段契约.md) | schema3的字段、单位、数量、工况配对与显式假设 |
+| [组合截面与已知算例](docs/组合截面与已知算例.md) | 含原点定义的推导及5组独立已知答案 |
+| [模板已知问题](docs/模板已知问题.md) | 混合压力、附加构件、隐含参数和图纸布局 |
+| reference_code/ | 匿名历史算法文本，供AI阅读改写，不直接运行 |
+| data/、examples/ | 型材数据、匿名输入示例 |
+| inputs/、work/、outputs/ | 本次输入、过程、最终作业；公开包只保留说明和空目录 |
+| local_reference/ | 整理者自己的原最终作业，只在本地保留 |
+
+T型以修订油船为基础并吸收后续内舷侧、中纵舱壁等纠错。C型保留纵骨架和全横骨架两条分支；如果新任务同时出现不同方向的教师要求，必须以本次明确要求为准并记录分支来源，不能只按船长猜测。骨架按部位选择，不能编造100 m等精确课程阈值。
+
+发布前阅读[GitHub发布说明](docs/GitHub发布说明.md)。不要把个人输入、全班名单、聊天或整本第三方教材推送到仓库。
+
+原工作目录的历史资料删除被执行策略拦截，暂留本地且已排除出Git。发布请使用由允许清单生成的公开ZIP，详见[整理状态](docs/整理状态.md)，不要把原目录整个手动压缩。

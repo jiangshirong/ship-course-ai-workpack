@@ -1,0 +1,263 @@
+{
+  "notice": "SYNTHETIC TOOL EXAMPLE ONLY. Not teacher data, not an approved design. Pressure numbers demonstrate separate same-condition envelopes; derive real cases for a real assignment.",
+  "given": {
+    "L": 132,
+    "B": 23.9,
+    "D": 14.1,
+    "draft": 8.5,
+    "Cb": 0.8,
+    "speed_kn": 15
+  },
+  "layout": {
+    "B": 23.9,
+    "D": 14.1,
+    "R": 1.4,
+    "side_width": 2,
+    "double_bottom": 1.8,
+    "camber": 0.478,
+    "frame_spacing_m": 0.75,
+    "frames_per_support": 3,
+    "platforms_m": [
+      4.8,
+      7.85,
+      10.9
+    ],
+    "flat_bands_m": [
+      0.73,
+      1.6366666666666665,
+      1.6366666666666665,
+      1.6366666666666665,
+      1.6366666666666665,
+      1.6366666666666665,
+      1.6366666666666665
+    ],
+    "arc_bands_m": [
+      1.0995574287564276,
+      1.0995574287564276
+    ],
+    "side_bands_m": [
+      1.4049999999999998,
+      1.4049999999999998,
+      1.4049999999999998,
+      1.4049999999999998,
+      1.4049999999999998,
+      1.4049999999999998,
+      1.4049999999999998,
+      1.4049999999999998,
+      1.46
+    ],
+    "inner_bands_m": [
+      1.7685714285714285,
+      1.7685714285714285,
+      1.7685714285714285,
+      1.7685714285714285,
+      1.7685714285714285,
+      1.7685714285714285,
+      1.7685714285714285
+    ],
+    "workbook_inner_side_top_m": 14.18,
+    "cad_inner_side_top_m": 14.18,
+    "wing_x_from_shell_m": [
+      0.65,
+      1.35
+    ],
+    "longitudinals": {
+      "deck": {
+        "x_from_center_m": [
+          0.75,
+          1.5,
+          2.25,
+          3.0,
+          3.75,
+          4.5,
+          5.25,
+          6.0,
+          6.75,
+          7.5,
+          8.25,
+          9.0,
+          9.75
+        ],
+        "calculation_spacing_m": 0.75,
+        "full_count": 26,
+        "support_span_m": 2.25,
+        "calculation_span_m": 2.25
+      },
+      "bottom": {
+        "x_from_center_m": [
+          0.75,
+          1.5,
+          2.25,
+          3.0,
+          3.75,
+          4.5,
+          5.25,
+          6.0,
+          6.75,
+          7.5,
+          8.25,
+          9.0,
+          9.75
+        ],
+        "calculation_spacing_m": 0.75,
+        "full_count": 26,
+        "support_span_m": 2.25,
+        "calculation_span_m": 2.25
+      },
+      "inner_bottom": {
+        "x_from_center_m": [
+          0.75,
+          1.5,
+          2.25,
+          3.0,
+          3.75,
+          4.5,
+          5.25,
+          6.0,
+          6.75,
+          7.5,
+          8.25,
+          9.0,
+          9.75
+        ],
+        "calculation_spacing_m": 0.75,
+        "full_count": 26,
+        "support_span_m": 2.25,
+        "calculation_span_m": 2.25
+      }
+    }
+  },
+  "deck_cases": {
+    "cargo": [
+      {
+        "condition": "synthetic cargo full",
+        "inside_kpa": 50,
+        "outside_kpa": 12,
+        "basis": "Synthetic example, both pressures at the same deck point in the same condition",
+        "combination_mode": "coincident",
+        "inside_kind": "case_value",
+        "combination_basis": "Synthetic simultaneous pressure pair for arithmetic demonstration only",
+        "inside_state": {
+          "case_id": "demo_cargo",
+          "point_id": "demo_point",
+          "phase_id": "demo_phase",
+          "draft_m": 8.5,
+          "z_m": 14.1
+        },
+        "outside_state": {
+          "case_id": "demo_cargo",
+          "point_id": "demo_point",
+          "phase_id": "demo_phase",
+          "draft_m": 8.5,
+          "z_m": 14.1
+        }
+      }
+    ],
+    "wing": [
+      {
+        "condition": "synthetic wing full",
+        "inside_kpa": 30,
+        "outside_kpa": 12,
+        "basis": "Synthetic example, both pressures at the same deck point in the same condition",
+        "combination_mode": "coincident",
+        "inside_kind": "case_value",
+        "combination_basis": "Synthetic simultaneous pressure pair for arithmetic demonstration only",
+        "inside_state": {
+          "case_id": "demo_wing",
+          "point_id": "demo_point",
+          "phase_id": "demo_phase",
+          "draft_m": 8.5,
+          "z_m": 14.1
+        },
+        "outside_state": {
+          "case_id": "demo_wing",
+          "point_id": "demo_point",
+          "phase_id": "demo_phase",
+          "draft_m": 8.5,
+          "z_m": 14.1
+        }
+      }
+    ]
+  },
+  "profiles": {
+    "B-L": "HP 300x11",
+    "IB-L": "HP 280x11",
+    "OF1": "HP 370x13",
+    "OF2": "HP 320x12",
+    "OF3": "HP 300x11",
+    "OF4": "HP 260x10",
+    "IF1": "HP 340x12",
+    "IF2": "HP 300x13",
+    "IF3": "HP 280x11",
+    "IF4": "HP 260x10",
+    "D-L": "HP 200x11.5",
+    "D-W": "HP 200x11.5",
+    "CL-F1": "HP 300x11",
+    "CL-F2": "HP 280x11",
+    "CL-F3": "HP 260x10",
+    "CL-F4": "HP 240x10"
+  },
+  "design_inputs": {
+    "tank_length_m": {
+      "value": 18,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "density_t_m3": {
+      "value": 1.025,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "airpipe_height_m": {
+      "value": 2.5,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "valve_pressure_kpa": {
+      "value": 25,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "service_years": {
+      "value": 25,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "corrosion_start_year": {
+      "value": 12,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "yield_mpa": {
+      "value": 235,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "eta": {
+      "value": 1,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "ax": {
+      "value": 0.267,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "avax": {
+      "value": 0.6,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "gravity_m_s2": {
+      "value": 9.81,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "midship_coefficient": {
+      "value": 0.996,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "floor_k1": {
+      "value": 1.45,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "floor_k2": {
+      "value": 0.93,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    },
+    "cl_web_min_mm": {
+      "value": 9.7,
+      "basis": "Synthetic tool example only; establish applicability and source for a real assignment."
+    }
+  },
+  "schema_version": 3
+}

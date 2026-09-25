@@ -1,0 +1,262 @@
+from pathlib import Path
+import math,json,ezdxf
+from ezdxf.enums import TextEntityAlignment
+from ezdxf.addons.drawing import Frontend,RenderContext
+from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy,ColorPolicy
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+P=Path.cwd();W=P/'work/pecheneg_long';O=P/'outputs/Пример_C型修订';M=json.loads((W/'model.json').read_text(encoding='utf8'));V=M['values']
+d=ezdxf.new('R2018');m=d.modelspace();d.header['$INSUNITS']=4;d.header['$MEASUREMENT']=1;d.header['$LUNITS']=2;d.header['$LUPREC']=2;d.header['$TILEMODE']=1
+d.styles.new('RU',dxfattribs={'font':'arial.ttf'})
+d.linetypes.new('AXIS',dxfattribs={'description':'Center','pattern':[1000,700,-100,100,-100]})
+d.linetypes.new('HIDDEN_P',dxfattribs={'description':'Hidden','pattern':[500,300,-200]})
+prefix='';ox=oy=0;bounds={};parts={}
+B=V['B']*1000;H=V['D']*1000;R=V['R']*1000;DB=V['db']*1000;LD=V['ld']*1000;half=B/2;hatch=V['hatch']*1000;cam=V['cam']*1000;ibedge=V['ibedge']*1000;al=V['al']*1000;ad=V['ad']*1000
+roof=lambda x:H+cam*(1-(x/half)**2)
+def begin(name,x,y):
+ global prefix,ox,oy
+ prefix=name;ox=x;oy=y
+ for n,c,lw,lt in [('HULL',4,30,'Continuous'),('STRUCT',7,20,'Continuous'),('STRONG',5,30,'Continuous'),('SEAM',7,13,'Continuous'),('TEXT',7,13,'Continuous'),('DIM',2,13,'Continuous'),('AXIS',30,13,'AXIS'),('PRESSURE',3,18,'Continuous'),('HIDDEN',8,13,'HIDDEN_P')]:
+  d.layers.new(name+'_'+n,dxfattribs={'color':c,'lineweight':lw,'linetype':lt})
+def pt(p):return(p[0]+ox,p[1]+oy)
+def line(a,b,la='HULL'):return m.add_line(pt(a),pt(b),dxfattribs={'layer':prefix+'_'+la})
+def poly(ps,la='HULL',closed=False):return m.add_lwpolyline([pt(p) for p in ps],close=closed,dxfattribs={'layer':prefix+'_'+la})
+def arc(c,r,a,b,la='HULL'):return m.add_arc(pt(c),r,a,b,dxfattribs={'layer':prefix+'_'+la})
+def circle(c,r,la='STRUCT'):return m.add_circle(pt(c),r,dxfattribs={'layer':prefix+'_'+la})
+def text(s,x,y,h=210,la='TEXT',align=TextEntityAlignment.LEFT):
+ return m.add_text(s,dxfattribs={'layer':prefix+'_'+la,'style':'RU','height':h}).set_placement(pt((x,y)),align=align)
+def dim(a,b,base,angle=0,h=180,txt='<>'):
+ dd=m.add_linear_dim(base=pt(base),p1=pt(a),p2=pt(b),angle=angle,text=txt,dimstyle='Standard',override={'dimtxt':h,'dimasz':h*.6,'dimexo':80,'dimexe':100,'dimgap':80,'dimdec':1,'dimzin':8,'dimtad':1,'dimclrd':2,'dimclre':2,'dimclrt':7,'dimtxsty':'RU'},dxfattribs={'layer':prefix+'_DIM'});dd.render();return dd
+def leader(s,target,label,h=210):
+ x,y=label;end=x+max(700,len(s)*h*.53);text(s,x,y+70,h);line((x,y),(end,y),'SEAM');anchor=x if abs(target[0]-x)<abs(target[0]-end) else end;line(target,(anchor,y),'SEAM')
+def seam(p,n):
+ x,y=p;nx,ny=n;tx,ty=-ny,nx
+ line(p,(x+nx*400,y+ny*400),'SEAM')
+ poly([(x+nx*130+tx*40,y+ny*130+ty*40),p,(x+nx*130-tx*40,y+ny*130-ty*40)],'SEAM')
+ for sg in [-1,1]:line((x+nx*400,y+ny*400),(x+nx*510+tx*sg*50,y+ny*510+ty*sg*50),'SEAM')
+def title(s,y=H+2100):text(s,0,y,360,align=TextEntityAlignment.CENTER)
+def hull(full=True,coaming=True):
+ line((-half+R,0),(half-R if full else 0,0));arc((-half+R,R),R,180,270)
+ line((-half,R),(-half,H));line((-ibedge,DB),(ibedge if full else 0,DB))
+ for sign in ([-1,1] if full else [-1]):
+  poly([(sign*(hatch/2+(half-hatch/2)*i/14),roof(hatch/2+(half-hatch/2)*i/14)) for i in range(15)])
+  line((sign*half,LD),(sign*hatch/2,LD))
+  if coaming:line((sign*hatch/2,roof(hatch/2)),(sign*hatch/2,roof(hatch/2)+600));line((sign*hatch/2-60,roof(hatch/2)+600),(sign*hatch/2+60,roof(hatch/2)+600))
+ if full:arc((half-R,R),R,270,360);line((half,R),(half,H))
+ line((0,-600),(0,H+1300),'AXIS');text('ДП',120,H+1200,160)
+ line((-half-600,V['d']*1000),(half+600 if full else 600,V['d']*1000),'AXIS');text('КВЛ',half+700 if full else 800,V['d']*1000+100,160)
+ for x in [-4000,0,4000] if full else [-4000,0]:line((x,0),(x,DB),'STRONG')
+def hp_shape(x,y,code,sign=1,scale=1):
+ p=M['beams'][code]['hp'];h=p['h']*scale;s=p['s']*scale;b=p['b']*scale
+ # One-sided bulb flat silhouette; nominal DIN height and web thickness preserved.
+ poly([(x,y),(x+s,y),(x+s,y+sign*(h-b)),(x+b,y+sign*(h-b/2)),(x+b*.7,y+sign*h),(x,y+sign*h)],'STRUCT',True)
+def t_girder(x,y,code):
+ g=M['girders'][code];h=g['h'];s=g['sw'];b=g['b'];t=g['tf']
+ if g['nweb']==2:
+  # Two webs joined by a common flange, as in the dry-cargo reference.
+  x=x+(1 if x>=0 else -1)*b/2
+  for xx in [x-300,x+300]:poly([(xx-s/2,y),(xx+s/2,y),(xx+s/2,y-h),(xx-s/2,y-h)],'STRONG',True)
+  poly([(x-b/2,y-h),(x+b/2,y-h),(x+b/2,y-h-t),(x-b/2,y-h-t)],'STRONG',True)
+  return
+ poly([(x-s/2,y),(x+s/2,y),(x+s/2,y-h),(x+b/2,y-h),(x+b/2,y-h-t),(x-b/2,y-h-t),(x-b/2,y-h),(x-s/2,y-h)],'STRONG',True)
+def manhole(cx,cy,w=600,h=800):
+ r=w/2;length=h-w
+ arc((cx,cy+length/2),r,0,180,'STRUCT');arc((cx,cy-length/2),r,180,360,'STRUCT');line((cx-r,cy-length/2),(cx-r,cy+length/2),'STRUCT');line((cx+r,cy-length/2),(cx+r,cy+length/2),'STRUCT')
+ line((cx-w/2-100,cy),(cx+w/2+100,cy),'AXIS');line((cx,cy-h/2-100),(cx,cy+h/2+100),'AXIS')
+def beams(simple=False):
+ for sign in [-1,1]:
+  t_girder(sign*hatch/2,roof(hatch/2),'DG');t_girder(sign*hatch/2,LD,'LG')
+  # Transverse side frames shown along their webs, with end brackets.
+  x=sign*half
+  for z0,z1,code in [(DB,LD,'FH'),(LD,H,'FT')]:
+   dep=M['beams'][code]['hp']['h'];line((x-sign*dep,z0),(x-sign*dep,z1),'STRUCT')
+   for z,direction in [(z0,1),(z1,-1)]:
+    leg=V['KDleg'] if z==H else V['KLleg'] if z==LD else V['KFleg']
+    poly([(x,z),(x-sign*leg,z),(x-sign*dep,z+direction*leg)],'STRUCT')
+  # Lower deck transverse beam web.
+  h=M['beams']['LB']['hp']['h'];line((sign*half,LD-h),(sign*hatch/2,LD-h),'STRUCT')
+  leg=V['KLleg'];poly([(sign*half,LD-leg),(sign*(half-leg),LD-h),(sign*half,LD)],'STRUCT')
+  # The ordinary-frame half has longitudinals; the strong-frame half has a T beam.
+  for xx in M['deck_x']:hp_shape(sign*xx*1000,roof(xx*1000),'DL',-1)
+  if sign==1:
+   h=M['girders']['RB']['h'];t=M['girders']['RB']['tf']
+   poly([(half,H-h),(hatch/2,roof(hatch/2)-h)],'STRONG')
+   poly([(half,H-h-t),(hatch/2,roof(hatch/2)-h-t)],'STRONG')
+   leg=V['KDleg'];poly([(half,H-leg-h),(half-leg,roof(half-leg)-h),(half,H)],'STRUCT')
+  for xx in M['bottom_x']:hp_shape(sign*xx*1000,0,'BL',1)
+  for xx in M['inner_x']:hp_shape(sign*xx*1000,DB,'IL',-1)
+ if not simple:
+  # Right: solid transverse floor. Left: bracket transverse floor.
+  for xx in [1000,3000,4990,6310]:manhole(xx,600)
+  for x in [4000]:line((x+V['sg_s'],0),(x+V['sg_s'],DB),'STRUCT')
+  # Brackets at left-hand bottom girders, leaving continuity of longitudinals clear.
+  for x in [-4000,0]:
+   for sgn in [-1,1]:poly([(x,0),(x+sgn*500,0),(x+sgn*300,350),(x+sgn*300,850),(x+sgn*500,DB),(x,DB)],'STRUCT')
+def seam_marks():
+ for sign in [-1,1]:
+  for x in [V['keelwidth']*500,V['keelwidth']*500+2000,V['keelwidth']*500+4000,V['keelwidth']*500+6000]:seam((sign*x,0),(0,-1))
+  for z in [R,R+2000,R+4000,H-V['keelwidth']*1000]:seam((sign*half,z),(sign,0))
+  for x in [half-2000,half-4000]:seam((sign*x,roof(x)),(0,1));seam((sign*x,LD),(0,1))
+  for x in [ibedge-1000,6000,4000,2000]:seam((sign*x,DB),(0,1))
+def dims():
+ dim((-half,0),(half,0),(-half,-1500));dim((half,0),(half,H),(half+1700,0),90);dim((-half,0),(-half,DB),(-half-1300,0),90)
+ dim((-hatch/2,roof(hatch/2)),(hatch/2,roof(hatch/2)),(-hatch/2,H+1450));dim((-half,LD),(-half,H),(-half-2500,LD),90)
+
+begin('00_TITLE',0,116000)
+text('Пример — СУХОГРУЗ',0,0,1000)
+text('L = 109 м; B = 17.8 м; D = 9.3 м; d = 6.8 м; Cb = 0.7; v = 15 уз.',0,-1800,550)
+
+# Longitudinal arrangement, x=0 aft perpendicular, x=109000 forward perpendicular.
+begin('01_PROFILE',0,97000);length=V['L']*1000
+text('ПРОДОЛЬНЫЙ РАЗРЕЗ',length/2,H+2200,550,align=TextEntityAlignment.CENTER)
+poly([(0,4700),(2300,1800),(6500,0),(102000,0),(109000,4800),(109000,10500),(100000,H),(15000,H),(0,10300)],'HULL',True)
+line((6500,DB),(102000,DB));line((24000,LD),(100000,LD));line((24000,0),(24000,H),'STRONG')
+for x in [6500,42000,60000,78000,96000,102000]:line((x,0),(x,roof(0) if x<102000 else 9600),'STRONG')
+line((0,V['d']*1000),(length,V['d']*1000),'AXIS');text('КВЛ',length+600,V['d']*1000,300)
+for j,(a0,b0) in enumerate([(24000,42000),(42000,60000),(60000,78000),(78000,96000)],1):
+ for a1,b1 in [(a0+2250,b0-2250)]:
+  poly([(a1,H),(a1,H+600),(b1,H+600),(b1,H)],'STRUCT');line((a1,LD),(b1,LD),'HIDDEN')
+ for x in [a0+2250,a0+6750,a0+11250,a0+15750]:line((x,DB),(x,H),'HIDDEN')
+ text('ТРЮМ '+str(j),(a0+b0)/2,3300,350,align=TextEntityAlignment.CENTER)
+for a0,b0 in [(0,6500),(102000,109000)]:
+ for i in range(int((b0-a0)/600)+1):
+  x=a0+i*600;line((x,5000 if a0==0 else 4800),(x,9300),'STRUCT')
+text('МАШИННОЕ ОТДЕЛЕНИЕ',11200,3800,320);text('ФОРПИК',102500,7200,260)
+dim((0,4700),(length,4800),(0,-2800),h=400);dim((24000,0),(42000,0),(24000,-1600),h=300)
+text('Шпация: 750; в оконечностях: 600',26000,12300,380)
+
+def plan(name,x,y,bottom=False,lower=False):
+ begin(name,x,y);w=18000
+ text(('ВТОРОЕ ДНО И ДНИЩЕ' if bottom else 'НИЖНЯЯ ПАЛУБА' if lower else 'ВЕРХНЯЯ ПАЛУБА')+' — ПЛАН',9000,half+1800,350,align=TextEntityAlignment.CENTER)
+ # plan coordinate x is longitudinal, y is transverse.
+ poly([(0,-half),(w,-half),(w,half),(0,half)],'HULL',True);line((-700,0),(w+700,0),'AXIS')
+ if bottom:
+  for xx in M['inner_x']:
+   for sg in [-1,1]:line((0,sg*xx*1000),(w,sg*xx*1000),'STRUCT')
+  for xx in M['bottom_x']:
+   for sg in [-1,1]:
+    yy=sg*xx*1000
+    if not any(abs(xx-q)<1e-6 for q in M['inner_x']):line((0,yy),(w,yy),'HIDDEN')
+  for sy in [-4000,0,4000]:line((0,sy),(w,sy),'STRONG')
+  for xx in range(0,18001,2250):line((xx,-half),(xx,half),'STRONG')
+  text('Днище: '+M['beams']['BL']['hp']['name']+'; второе дно: '+M['beams']['IL']['hp']['name'],0,-half-1500,230)
+  dim((0,half),(2250,half),(0,half+750),h=220)
+ else:
+  xa,xb=2250,15750;ha=hatch/2
+  # Rounded hatch corners, R150.
+  rad=150
+  for yy in [-ha,ha]:line((xa+rad,yy),(xb-rad,yy))
+  for xx in [xa,xb]:line((xx,-ha+rad),(xx,ha-rad))
+  for cx,cy,aa in [(xa+rad,-ha+rad,180),(xb-rad,-ha+rad,270),(xb-rad,ha-rad,0),(xa+rad,ha-rad,90)]:arc((cx,cy),rad,aa,aa+90)
+  for yy in [-ha,ha]:line((0,yy),(18000,yy),'STRONG')
+  for xx in [2250,6750,11250,15750]:
+   for yy in [-ha,ha]:circle((xx,yy),180);line((xx-250,yy),(xx+250,yy),'AXIS')
+  if not lower:
+   for yy in M['deck_x']:
+    for sg in [-1,1]:line((0,sg*yy*1000),(w,sg*yy*1000),'STRUCT')
+   for yy in range(-3500,3501,700):
+    line((0,yy),(xa,yy),'STRUCT');line((xb,yy),(w,yy),'STRUCT')
+  # Show actual web lines of both hatch-edge girders.
+  for sg in [-1,1]:
+   offsets=[85,685] if lower else [-5,5]
+   for off in offsets:line((0,sg*(ha+off)),(w,sg*(ha+off)),'STRONG')
+  ste=750 if lower else 2250
+  for xx in range(0,18001,ste):
+   if xa<xx<xb:
+    line((xx,-half),(xx,-ha),'STRONG' if not lower else 'STRUCT');line((xx,ha),(xx,half),'STRONG' if not lower else 'STRUCT')
+   else:line((xx,-half),(xx,half),'STRONG' if not lower else 'STRUCT')
+  dim((xa,-ha),(xb,-ha),(xa,-ha-750),h=230);dim((xb,-ha),(xb,ha),(xb+1000,-ha),90,h=230)
+  text(('Карлингс: 2 x 550x12 / 770x25' if lower else 'Карлингс: 500x10 / 250x25'),1000,-half-1500,230);text('Пиллерсы: шаг 4500',5000,-half-2100,230)
+ dim((0,-half),(18000,-half),(0,-half-3000),h=260);dim((18000,-half),(18000,half),(19300,-half),90,h=260)
+plan('02_DECK',0,73500)
+plan('03_BOTTOM',29000,73500,True)
+plan('04_LOWER',85000,73500,False,True)
+begin('05_SIDE',58000,65000);text('БОРТ — РАЗВЁРТКА',9000,H+1400,350,align=TextEntityAlignment.CENTER)
+poly([(0,0),(18000,0),(18000,H),(0,H)],'HULL',True)
+line((0,DB),(18000,DB),'HULL');line((0,LD),(18000,LD),'STRONG')
+for xx in range(0,18001,2250):
+ line((xx,0),(xx,DB),'STRONG')
+ if 0<xx<18000:line((xx+V['f_s'],0),(xx+V['f_s'],DB),'STRONG')
+dim((18000,0),(18000,DB),(20100,0),90,h=180)
+leader('Двойное дно 1200; флоры s'+str(int(V['f_s'])),(10125,600),(4500,-1100),220)
+for xx in range(0,18001,750):line((xx,DB),(xx,H),'STRUCT')
+for xx in range(0,18001,2250):line((xx,DB),(xx,H),'STRONG')
+text(M['beams']['FH']['hp']['name']+' — трюм',4500,3300,300);text(M['beams']['FT']['hp']['name']+' — твиндек',4500,7400,300)
+dim((0,DB),(750,DB),(0,-1500),h=250);dim((18000,DB),(18000,LD),(19300,DB),90,h=250)
+
+# Four coordinated cross-section views.
+begin('06_SCHEME',12000,44000);hull();beams(True);dims();title('СХЕМА НАБОРА — СУХОГРУЗ')
+leader('Продольные балки палубы',(-6800,roof(6800)-70),(-10500,H+750),210)
+leader('Шпангоуты',(-half+200,3300),(-12800,4000),210)
+leader('Продольные балки днища',(-4500,120),(-11000,-2900),210)
+
+begin('07_PRESSURE',52000,44000);hull(False);title('НАРУЖНОЕ ДАВЛЕНИЕ',H+1800)
+scale=58
+def ext(z,draft):
+ st=10*max(draft-z,0);pw=max(0,V['pw0']-1.5*V['cw']*(draft-z)/draft if z<=draft else V['pw0']-7.5*V['ax']*(z-draft));return st+pw
+zs=[i*H/100/1000 for i in range(101)]
+def edge(z):return -half if z*1000>=R else -half+R-math.sqrt(R*R-(z*1000-R)**2)
+poly([(edge(z)-scale*ext(z,V['d']),z*1000) for z in zs],'PRESSURE')
+for code,z in [('A',0),('E',V['R']),('F',V['R']+2),('G',V['R']+4),('H',V['D']-V['keelwidth']),('DK',V['D'])]:
+ e=edge(z);p=ext(z,V['d']);line((e,z*1000),(e-p*scale,z*1000),'PRESSURE');text(f'{code}  {p:.1f} кПа',e-p*scale-2300,z*1000+90,210)
+text(f'Днище: p = {V["PBottom"]:.2f} кПа',-12000,-2100,250)
+text(f'Балласт: pнетто = {V["PNET"]:.2f} кПа; dб = {V["dball"]:.2f} м',-12000,-2700,230)
+text(f'Второе дно: p = {V["PIB"]:.2f} кПа',-12000,-3300,230)
+
+begin('08_PLATING',92000,44000);hull();seam_marks();title('РАЗБИВКА ОБШИВКИ И НАСТИЛОВ')
+for code,lo,hi in [('E',R,R+2000),('F',R+2000,R+4000),('G',R+4000,H-V['keelwidth']*1000),('H',H-V['keelwidth']*1000,H)]:leader(f'{code} s{V[code+"_s"]:g}',(half,(lo+hi)/2),(half+1100,(lo+hi)/2+100),220)
+for code,x in [('K',0),('A',1500),('B',3500),('C',5500),('D',6900)]:text(f'{code} s{V["K_s"] if code=="K" else V["A_s"]:g}',x,-1000,210,align=TextEntityAlignment.CENTER)
+dim((-V['keelwidth']*500,0),(V['keelwidth']*500,0),(-V['keelwidth']*500,-2300),h=210)
+leader(f'DK s{V["DK_s"]:g}',(-6500,roof(6500)),(-8500,H+900),230);leader(f'LD s{V["LD_s"]:g}',(-6500,LD),(-6500,LD+800),230)
+leader(f'IB s{V["IB_s"]:g}',(-3500,DB),(-5800,DB+900),230);leader(f'IM s{V["IM_s"]:g}',(-ibedge+500,DB),(-12000,DB+1600),230)
+text('Ширстрек 1345; рядовые поясья 2000',-7600,-3300,240)
+
+begin('09_MIDSHIP',14000,17000);hull();beams();seam_marks();dims();title('КОНСТРУКТИВНЫЙ МИДЕЛЬ-ШПАНГОУТ',H+2600)
+text('Обычный шпангоут',-7200,H+1850,250);text('Рамный шпангоут',4400,H+1850,250)
+leader(M['beams']['DL']['hp']['name'],(-6100,roof(6100)-70),(-10400,H+650),225)
+leader(M['beams']['FT']['hp']['name'],(-half+130,7900),(-13100,8100),225)
+leader(M['beams']['FH']['hp']['name'],(-half+200,3400),(-13100,3700),225)
+leader(M['beams']['LB']['hp']['name'],(-6400,LD-180),(-6300,LD+1000),225)
+leader(f'DK s{V["DK_s"]:g}',(6500,roof(6500)),(9700,H+600),225)
+g=M['girders']['RB'];leader(f'T {g["h"]:g}x{g["sw"]:g} / {g["b"]:g}x{g["tf"]:g}',(6500,roof(6500)-g['h']),(5200,H-1250),200)
+for code,target,label in [('DG',(-hatch/2,roof(hatch/2)-250),(-2600,8500)),('LG',(-hatch/2-85,LD-300),(-2600,4700))]:
+ g=M['girders'][code];leader(f'{code}: '+('2 x ' if g['nweb']==2 else '')+f'{g["h"]:g}x{g["sw"]:g} / {g["b"]:g}x{g["tf"]:g}',target,label,200)
+for code,lo,hi in [('E',R,R+2000),('F',R+2000,R+4000),('G',R+4000,H-V['keelwidth']*1000),('H',H-V['keelwidth']*1000,H)]:leader(f'{code} s{V[code+"_s"]:g}',(half,(lo+hi)/2),(10400,(lo+hi)/2),200)
+leader(f'LD s{V["LD_s"]:g}',(6500,LD),(10000,6500),220)
+leader(f'IB s{V["IB_s"]:g}',(-4500,DB),(-7000,2300),220)
+leader(M['beams']['IL']['hp']['name'],(-2000,DB-150),(-3000,2600),220)
+leader(M['beams']['BL']['hp']['name'],(-2000,140),(-5000,-2700),220)
+leader(f'Флор s{V["f_s"]:g}',(4800,750),(9500,1900),220)
+leader(f'Вертикальный киль s{V["vk_s"]:g}',(0,600),(0,-3200),220)
+leader(f'Стрингер s{V["sg_s"]:g}',(4000,600),(4400,-2300),220)
+leader(f'Днище s{V["A_s"]:g}; киль s{V["K_s"]:g}',(700,0),(-3200,-4200),220)
+
+begin('10_FLOOR_DETAIL',49000,18000);text('СПЛОШНОЙ ФЛОР — ПРОХОДЫ',4000,4000,330,align=TextEntityAlignment.CENTER)
+poly([(0,0),(8000,0),(8000,DB),(0,DB)],'HULL',True)
+for x in [0,4000,8000]:line((x,0),(x,DB),'STRONG')
+for xx in [1000,3000,4990,6310]:manhole(xx,600)
+cx=1000;dim((cx-300,600),(cx+300,600),(cx-300,-1100),h=180)
+dim((cx+300,200),(cx+300,1000),(cx+1000,200),90,h=170)
+dim((cx-300,0),(cx-300,200),(cx-1100,0),90,h=150)
+leader('600 x 800; R300',(cx,1000),(2000,2300),220)
+text('Нижняя кромка прохода: 200 над днищем',0,-2000,230)
+text(f'Флор s{V["f_s"]:g}; двойное дно 1200',0,-2500,230)
+
+begin('11_SECTIONS',83000,18000);text('СЕЧЕНИЯ БАЛОК',9500,3500,330,align=TextEntityAlignment.CENTER)
+text('HP — М 5:1',0,2300,220)
+for i,code in enumerate(['BL','IL','DL','FH','FT','LB']):
+ x=i*3600;hp_shape(x,0,code,1,5);line((x-800,0),(x+1000,0));text(M['beams'][code]['hp']['name'],x-800,-650,220);text(code,x-800,-1100,250)
+for i,code in enumerate(['DG','LG','RB']):
+ x=1600+i*6500;y=-4500;g=M['girders'][code];t_girder(x,y,code);line((x-900,y),(x+900,y));text(f'{code}: '+('2 x ' if g['nweb']==2 else '')+f'{g["h"]:g}x{g["sw"]:g} / {g["b"]:g}x{g["tf"]:g}',x-1600,y-1200,190)
+text('Карлингсы — М 1:1',0,-3500,220)
+
+d.set_modelspace_vport(height=125000,center=(54000,65000));path=O/'Пример_project.dxf';d.saveas(path)
+au=d.audit();assert not au.has_errors,au.errors
+record={'entities':len(m),'units':'mm','dimensions':len(m.query('DIMENSION')),'layers':len(d.layers),'parameters':{k:V[k] for k in ['L','B','D','d','Cb','v','db','ld','hatch']},'views':['longitudinal profile','upper deck','bottom','lower deck','side','framing scheme','pressure','plating','structural midship','floor access','sections']}
+(W/'cad_manifest.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf8');print(record)
+for tag,box,size in [('all',(-6000,114000,7000,119000),(16,14)),('midship',(-1000,29000,11500,30200),(18,12)),('floor',(47500,59500,14700,22500),(14,9)),('plans',(-2000,108000,58000,86500),(20,7)),('plating',(79000,105000,39300,56600),(16,11)),('pressure',(34000,56000,39600,56000),(14,11)),('side',(56500,80300,62500,77200),(16,10)),('upper',(-2000,21500,61000,85000),(12,12)),('lower',(83000,106500,61000,85000),(12,12)),('bottom',(27000,50500,61000,85000),(12,12))]:
+ fig,ax=plt.subplots(figsize=size);fig.patch.set_facecolor('#212830');ctx=RenderContext(d);ctx.set_current_layout(m)
+ Frontend(ctx,MatplotlibBackend(ax),config=Configuration(background_policy=BackgroundPolicy.CUSTOM,custom_bg_color='#212830')).draw_layout(m,finalize=True)
+ ax.set_aspect('equal',adjustable='box');ax.set_xlim(box[0],box[1]);ax.set_ylim(box[2],box[3]);ax.set_axis_off();fig.subplots_adjust(0,0,1,1);fig.savefig(W/(tag+'.png'),dpi=140,facecolor='#212830');plt.close(fig)

@@ -1,0 +1,285 @@
+from pathlib import Path
+import math,json,re,collections
+import ezdxf
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from ezdxf.addons.drawing import Frontend,RenderContext
+from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+from ezdxf.addons.drawing.config import Configuration,BackgroundPolicy
+root=Path.cwd();work=root/'work/vladimir';out=root/'outputs/Пример_修正'
+data=json.loads((work/'results.json').read_text(encoding='utf8'))['ru'];v=data['records']
+iv=lambda r:v['Исходные данные']['B'+str(r)]
+B=iv(5)*1000;H=iv(6)*1000;half=B/2;R=iv(12)*1000;DB=iv(10)*1000;DS=iv(11)*1000;cam=iv(13)*1000;draft=iv(7)*1000
+levels=[DB]+[iv(i)*1000 for i in [19,20,21]]+[H];astep=iv(18)*1000;L=iv(4)*1000
+cargo=data['layout']['cargo'];wing=data['layout']['wing']
+roof=lambda x:H+cam*(1-abs(x-half)/half)
+plates={v['Листы']['A'+str(r)]:v['Листы']['N'+str(r)] for r in range(5,31)}
+profiles={r['code']:r['profile'] for r in data['beams']+data['cl']};cat={p['name']:p for p in data['hp']}
+fl=v['Флоры и киль']['H4'];vk=v['Флоры и киль']['H5'];st=v['Флоры и киль']['H6'];cl=v['extra']['B13'];pl=v['extra']['B15']
+d=ezdxf.readfile(root/'work/klara/user_final.dxf');m=d.modelspace()
+# Keep the final drawing's detailed frame outline; regenerate dependent geometry and other views.
+for e in list(m):
+ if not e.dxf.layer.startswith('03_') or e.dxf.layer in ['03_SEAM','03_TEXT','03_0','03_Defpoints']:m.delete_entity(e)
+for e in list(m.query('INSERT')):e.explode()
+def py(y):
+ a=[0,1550,1800,5200,8600,9400,12000,15500,16040];b=[0,R,DB,levels[1],levels[2],draft,levels[3],H,H+cam]
+ if y<0:return y
+ if y>16040:return y+(H+cam-16040)
+ return float(np.interp(y,a,b))
+def px(x):
+ if x<0:return x
+ if x>27000:return B+x-27000
+ return float(np.interp(x,[0,1550,2000,13500,25000,25450,27000],[0,R,DS,half,B-DS,B-R,B]))
+def trans(p):
+ x,y=p[0],p[1];xx=px(x);yy=py(y)
+ oldroof=15500+.04*min(x,27000-x)
+ if 0<=x<=27000 and abs(y-oldroof)<1:yy=roof(xx)
+ return xx,yy,0
+for e in list(m):
+ t=e.dxftype();lay=e.dxf.layer
+ if t=='LWPOLYLINE' and lay=='03_MEMBER' and len(e)<=3 and min(p[0] for p in e.get_points('xy'))>=25000:
+  m.delete_entity(e);continue
+ # Replace main hull and small floor detail, and obsolete hole centre marks.
+ if lay=='03_CONTOUR' or (t=='LINE' and min(e.dxf.start.y,e.dxf.end.y)<-4000) or (t=='LWPOLYLINE' and min(p[1] for p in e.get_points('xy'))<-4000):m.delete_entity(e);continue
+ if t=='CIRCLE' and lay=='03_MEMBER' and e.dxf.center.y>1800 and e.dxf.center.x<2000:m.delete_entity(e);continue
+ if t=='LINE' and lay=='03_CENTER':
+  a,b=e.dxf.start,e.dxf.end
+  if abs((a.x+b.x)/2-1000)<800 and min(a.y,b.y)>1800 and (a-b).magnitude<2200:m.delete_entity(e);continue
+ if t=='LINE':e.dxf.start=trans(e.dxf.start);e.dxf.end=trans(e.dxf.end)
+ elif t=='LWPOLYLINE':
+  ps=list(e.get_points('xyseb'));oldxy=[(p[0],p[1]) for p in ps]
+  # HP silhouettes keep their catalogue cross section rather than being stretched.
+  if lay=='03_MEMBER' and len(ps)==6:
+   x=(ps[0][0]+ps[1][0])/2;y=ps[0][1];xx=px(x)
+   if abs(y)<1:code='B-L';sgn=1;yy=0
+   elif abs(y-1800)<1:code='IB-L';sgn=-1;yy=DB
+   elif y>15000:code='D-W' if x<2000 or x>25000 else 'D-L';sgn=-1;yy=roof(xx)
+   else:code=None
+   if code:
+    # Catalogue positions are equally spaced within each tank.
+    if 2000<x<25000:
+     sideX=min(x,27000-x);idx=round((sideX-2000)/(11500/15));xx=DS+cargo[idx-1]
+     if x>13500:xx=B-xx
+     if code.startswith('D'):yy=roof(xx)
+    else:xx=wing[round(x/(2000/3))-1] if x<2000 else B-wing[round((27000-x)/(2000/3))-1]
+    if code.startswith('D'):yy=roof(xx)
+    p=cat[profiles[code]];h,s,b=p['h'],p['s'],p['b']
+    q=[(-s/2,0),(s/2,0),(s/2,h-b*math.sqrt(3)),(s/2+b,h-s),(s/2+b-s,h),(-s/2,h)]
+    e.set_points([(xx+u,yy+sgn*z) for u,z in q]);continue
+  e.set_points([(*trans((p[0],p[1]))[:2],p[2],p[3],p[4]) for p in ps],format='xyseb')
+ elif t=='ARC':
+  cc=e.dxf.center;ra=e.dxf.radius;aa=e.dxf.start_angle;bb=e.dxf.end_angle
+  if bb<aa:bb+=360
+  points=[trans((cc.x+ra*math.cos(math.radians(t)),cc.y+ra*math.sin(math.radians(t))))[:2] for t in np.linspace(aa,bb,65)]
+  m.add_lwpolyline(points,dxfattribs={'layer':lay});m.delete_entity(e)
+ elif t=='CIRCLE':e.dxf.center=trans(e.dxf.center)
+ elif t=='POINT':e.dxf.location=trans(e.dxf.location)
+ else:m.delete_entity(e)
+# All ordinary right-side frame outlines are rebuilt with selected profile depths.
+for e in list(m.query('LINE[layer=="03_MEMBER"]')):
+ a,b=e.dxf.start,e.dxf.end
+ if abs(a.x-b.x)<.01 and min(a.y,b.y)>=DB-1 and max(a.y,b.y)<=H+100:
+  if B-450<a.x<B-1 or B-DS+1<a.x<B-DS+450:m.delete_entity(e)
+
+prefix='';ox=oy=0
+def begin(p,x,y):
+ global prefix,ox,oy
+ prefix=p;ox=x;oy=y
+ for suffix,col in [('HULL',4),('MEMBER',4),('CENTER',30),('TEXT',7),('SEAM',7),('DIM',2),('SEA',3),('NET',6)]:
+  name=p+'_'+suffix
+  if name not in d.layers:d.layers.new(name,dxfattribs={'color':col,'linetype':'AXIS22' if suffix=='CENTER' and 'AXIS22' in d.linetypes else 'Continuous'})
+def pt(p):return ox+p[0],oy+p[1]
+def line(a,b,l='HULL'):return m.add_line(pt(a),pt(b),dxfattribs={'layer':prefix+'_'+l})
+def poly(ps,l='HULL',closed=False):return m.add_lwpolyline([pt(p) for p in ps],close=closed,dxfattribs={'layer':prefix+'_'+l})
+def text(t,x,y,h=250,l='TEXT',rot=0):return m.add_text(str(t),dxfattribs={'layer':prefix+'_'+l,'style':'RU','height':h,'rotation':rot}).set_placement(pt((x,y)))
+def circle(x,y,r,l='MEMBER'):return m.add_circle(pt((x,y)),r,dxfattribs={'layer':prefix+'_'+l})
+def arc(c,r,a,b,l='HULL'):return m.add_arc(pt(c),r,a,b,dxfattribs={'layer':prefix+'_'+l})
+def leader(p,x,y,t):poly([p,(x,y-70),(x+max(900,len(t)*135),y-70)],'SEAM');text(t,x,y)
+def seam(p,n):
+ x,y=p;nx,ny=n;tx,ty=-ny,nx
+ line(p,(x+nx*560,y+ny*560),'SEAM');poly([(x+nx*140+tx*40,y+ny*140+ty*40),p,(x+nx*140-tx*40,y+ny*140-ty*40)],'SEAM')
+ for sg in [-1,1]:line((x+nx*560,y+ny*560),(x+nx*700+sg*tx*60,y+ny*700+sg*ty*60),'SEAM')
+def dimh(x1,x2,y1,y2,y,t=None):
+ for x,yy in [(x1,y1),(x2,y2)]:line((x,yy),(x,y+150),'DIM')
+ line((x1,y),(x2,y),'DIM')
+ for x,sg in [(x1,1),(x2,-1)]:poly([(x+sg*140,y+40),(x,y),(x+sg*140,y-40)],'DIM')
+ t=t or f'{x2-x1:.0f}';text(t,(x1+x2)/2-len(t)*70,y+130,210,'DIM')
+def dimv(y1,y2,x1,x2,x,t=None):
+ for yy,xx in [(y1,x1),(y2,x2)]:line((xx,yy),(x+150,yy),'DIM')
+ line((x,y1),(x,y2),'DIM')
+ for yy,sg in [(y1,1),(y2,-1)]:poly([(x-40,yy+sg*140),(x,yy),(x+40,yy+sg*140)],'DIM')
+ text(t or f'{y2-y1:.0f}',x+130,(y1+y2)/2-350,210,'DIM',90)
+def hull(full=True,openings=False,water=True):
+ end=B if full else half
+ line((R,0),(B-R if full else half,0));arc((R,R),R,180,270);line((0,R),(0,H));poly([(0,H),(half,H+cam)]+([(B,H)] if full else []))
+ if full:arc((B-R,R),R,270,360);line((B,R),(B,H))
+ line((0,DB),(end,DB));line((DS,0),(DS,roof(DS)))
+ if full:line((B-DS,0),(B-DS,roof(B-DS)))
+ line((half,0),(half,H+cam));line((half,-700),(half,H+cam+1100),'CENTER');text('ДП',half+120,H+cam+850)
+ for yy in levels[1:-1]:
+  for x in ([0,B-DS] if full else [0]):
+   if openings:line((x,yy),(x+DS/2-300,yy));line((x+DS/2+300,yy),(x+DS,yy))
+   else:line((x,yy),(x+DS,yy))
+ if water:line((-500,draft),(end+600,draft),'CENTER');text('КВЛ',end+650,draft+130,220)
+def members(full=True):
+ xs=wing+[DS+x for x in cargo]
+ for x in xs+([B-x for x in xs] if full else []):line((x,roof(x)),(x,roof(x)-220),'MEMBER')
+ for x in [DS+x for x in cargo]+([B-DS-x for x in cargo] if full else []):
+  line((x,0),(x,250),'MEMBER');line((x,DB),(x,DB-250),'MEMBER')
+lengths=[iv(45)*500]+[v['Эквивалентный брус']['D'+str(r)] for r in range(6,11)]+[2000]*2+[v['Эквивалентный брус']['D'+str(r)] for r in range(15,22)]+[iv(45)*1000]
+tags=['KL']+list('ABCDEFGHIJKLMN')+['SH'];assert len(tags)==len(lengths)
+flat=half-R;al=R*math.pi/2
+assert math.isclose(sum(lengths),flat+al+H-R,abs_tol=1e-6)
+def per(s):
+ if s<=flat:return (half-s,0),(0,-1)
+ if s<flat+al:
+  a=(s-flat)/R;return (R-R*math.sin(a),R-R*math.cos(a)),(-math.sin(a),-math.cos(a))
+ return (0,R+s-flat-al),(-1,0)
+def plating_labels():
+ acc=0
+ for tag,w in zip(tags,lengths):
+  p,n=per(acc+w/2)
+  if tag=='KL':leader((half,0),half-1100,-1600,f'KL s{plates[tag]}')
+  elif p[1]<50:leader(p,p[0]-400,-1700 if tag in 'BDF' else -2450,f'{tag} s{plates[tag]}')
+  else:leader(p,-4200,max(p[1]+80,1100),f'{tag} s{plates[tag]}')
+  acc+=w
+  if acc<sum(lengths)-1:
+   pp,nn=per(acc);seam(pp,nn);seam((B-pp[0],pp[1]),(-nn[0],nn[1]))
+ for i,tag in enumerate(['ISG','ISF','ISE','ISD','ISC','ISB','ISA']):
+  r=26+i;z=v['Эквивалентный брус']['F'+str(r)]*10;le=v['Эквивалентный брус']['D'+str(r)]
+  leader((DS,z),4500 if i==6 else 3400,H-2300 if i==6 else z+150,f'{tag} s{plates[tag]}')
+  if i<6:seam((DS,z+le/2),(1,0));seam((B-DS,z+le/2),(-1,0))
+ for x in np.linspace(DS,half-1500,6):seam((x,DB),(0,1));seam((x,roof(x)),(0,1))
+ leader((8000,roof(8000)),8500,H+2100,f'DK s{plates["DK"]}');leader((7500,DB),6500,DB+1600,f'IB s{plates["IB"]}');leader((1000,DB),3600,DB+550,f'IM s{plates["IM"]}')
+ dimh(0,B,0,0,-4000);dimh(half-iv(45)*500,half+iv(45)*500,0,0,-3150)
+
+begin('03',0,0);hull(water=False);plating_labels()
+text('КОНСТРУКТИВНЫЙ МИДЕЛЬ-ШПАНГОУТ',4800,H+3800,440)
+dimv(0,H,B,B,B+6900);dimv(0,DB,0,0,-2100)
+dimh(0,DS,H,roof(DS),H+2500);dimh(0,wing[0],H,roof(wing[0]),H+1500);dimh(DS,DS+cargo[0],roof(DS),roof(DS+cargo[0]),H+1500)
+for i in range(4):
+ lo,hi=levels[i:i+2];hiIn=roof(DS) if i==3 else hi
+ for code,base,sgn,top in [('OF'+str(i+1),B,-1,hi),('IF'+str(i+1),B-DS,1,hiIn)]:
+  p=cat[profiles[code]]
+  for dx in [p['h'],p['h']-p['s']]:line((base+sgn*dx,lo),(base+sgn*dx,top),'MEMBER')
+  leader((base+sgn*p['h'],(lo+top)/2),B+1500 if code.startswith('OF') else B-6700,(lo+top)/2+150,code+' '+profiles[code])
+ dimv(lo,hi,B,B,B+5700)
+ # Clear human access opening: diameter 1000, sill 300 above the lower platform.
+ cy=lo+800;circle(DS/2,cy,500)
+ line((DS/2-630,cy),(DS/2+630,cy),'CENTER');line((DS/2,cy-630),(DS/2,cy+630),'CENTER')
+ code='CL-F'+str(i+1);top=H+cam if i==3 else hi;p=cat[profiles[code]]
+ for dx in [p['h'],p['h']-p['s']]:line((half+dx,lo),(half+dx,top),'MEMBER')
+ leader((half+p['h'],(lo+top)/2),half+1800,(lo+top)/2+130,code+' '+profiles[code])
+leader((DS/2,DB+800),3400,DB+3000,'Лазы %%c1000; низ +300 от платформы')
+leader((half,8500),half+2200,8700,f'CL s{cl}')
+leader((8000,1000),6100,DB+3400,f'Флор s{fl}');leader((half,700),half+1100,DB+1150,f'ВК s{vk}');leader((B-DS,700),B-5400,DB+650,f'Стрингер s{st}')
+for code,p,x,y in [('B-L',(half+5000,0),half+4700,-900),('IB-L',(half+4000,DB),half+2800,DB+700),('D-L',(half+6000,roof(half+6000)),half+5500,H+2100),('D-W',(B-1000,roof(B-1000)),B-2500,H+2900)]:leader(p,x,y,code+' '+profiles[code])
+text('Сечение по сплошному флору',5000,6000,240);text('Сечение между флорами',half+2200,6000,270)
+# Floor passage detail; man passage 600 x 800 with low sill.
+begin('FLOOR',-2000,-16500);text('А. ФЛОР И ПРОХОД',0,DB+900,310)
+poly([(0,0),(astep,0),(astep,DB),(0,DB)],closed=True)
+cx=astep/2;rad=300;low=300;high=1100
+line((cx-rad,low+rad),(cx-rad,high-rad));line((cx+rad,low+rad),(cx+rad,high-rad));arc((cx,low+rad),rad,180,360);arc((cx,high-rad),rad,0,180)
+dimh(cx-rad,cx+rad,low+rad,low+rad,-700,'600');dimv(low,high,cx+rad,cx+rad,astep+850,'800');dimv(0,low,0,0,-850,'300');text(f's{fl}',astep+200,DB-200)
+
+begin('01',0,33000);hull();members();text('СХЕМА НАБОРА МИДЕЛЬ-ШПАНГОУТА. ТАНКЕР',0,H+3700,420)
+leader((8000,roof(8000)),6000,H+2300,'Продольный набор палубы');leader((9000,0),5000,-2100,'Продольный набор днища');leader((DS,7000),3800,7700,'Поперечный набор борта');leader((half,8000),half+2300,8400,'Продольная переборка');dimh(0,B,0,0,-3900)
+begin('04',45000,0);hull(openings=True);members();plating_labels();text('РАЗБИВКА НА ПОЯСЬЯ ОБШИВКИ И ВНУТРЕННЕГО БОРТА',-2000,H+3700,390)
+leader((half,8500),half+2000,8700,f'CL s{cl}');leader((300,levels[3]),7000,levels[3]-450,f'PL s{pl}; вырез 600x1200')
+begin('PLATFORM',45500,-13000);text('ПЛАТФОРМА. ВИД СВЕРХУ',0,3000,300)
+for yy in [0,DS]:line((0,yy),(4200,yy))
+for xx in [0,2100,4200]:line((xx,0),(xx,DS))
+for x in [450,2550]:poly([(x,DS/2-300),(x+1200,DS/2-300),(x+1200,DS/2+300),(x,DS/2+300)],closed=True)
+text(f's{pl}; отверстия 600x1200',0,-650);text(f'Шаг рам 2100; ширина {DS:.0f}',0,-1100)
+
+# Pressure diagram recomputed from the same loading states as the workbook.
+cw=v['Нагрузки']['B2'];pw0=v['Нагрузки']['D2'];az=v['Нагрузки']['F2'];th=v['Нагрузки']['H2'];ps=v['Нагрузки']['J2'];dbal=.6*iv(7)
+def wave(z,dr):return max(0,pw0-1.5*cw*(dr-z)/dr if z<=dr else pw0-7.5*iv(32)*(z-dr))
+def sea(z):return 10*max(iv(7)-z,0)+max(wave(z,iv(7)),.03*iv(4)+5 if z>iv(7) else 0)
+def net(z):
+ h=max(roof(DS)/1000-z,0);pb=max(1.025*(9.81+az)*h,1.025*9.81*(h+half/1000*th),1.025*9.81*(h+iv(22)*ps),.75*1.025*9.81*(h+iv(25)),1.025*9.81*h+iv(26))
+ return pb-max(10*max(dbal-z,0)-wave(z,dbal),0)
+def surf(z):
+ if z<R:
+  a=math.acos((R-z)/R);return (R-R*math.sin(a),z),(-math.sin(a),-math.cos(a))
+ return (0,z),(-1,0)
+begin('02',49000,36000);hull(False);text('ОБШИВКА. ЭПЮРЫ ДАВЛЕНИЯ',-5000,H+3800,370)
+for fun,layer in [(sea,'SEA'),(net,'NET')]:
+ points=[(half,-fun(0)*60),(R,-fun(0)*60)]
+ for z in np.linspace(1,H,181):
+  p,n=surf(z);pr=fun(z/1000);points.append((p[0]+n[0]*pr*60,p[1]+n[1]*pr*60))
+ poly(points,layer)
+ for z in [0,DB,draft,H]:
+  p,n=surf(z);pr=fun(z/1000);q=(p[0]+n[0]*pr*60,p[1]+n[1]*pr*60);line(p,q,layer);text(f'{pr:.2f}'.replace('.',','),q[0]-1350,q[1]+100,230,layer)
+text('p, кПа',-10800,H+1800,260);text(f'Море: d = {iv(7):g} м',6000,H+1900,270,'SEA');text(f'Нетто балласта: dB = {dbal:g} м',6000,H+1200,260,'NET')
+acc=0
+for tag,w in zip(tags,lengths):
+ p,n=per(acc+w/2);text(tag,p[0]-100 if p[1]<10 else 320,300 if p[1]<10 else p[1],210);acc+=w
+
+# Earlier assignment stage: longitudinal arrangement, transverse section and three framing plans.
+begin('ARR_LONG',0,149000)
+bow=L-12000;fore=L-9000;tanklength=iv(22)*1000;tankstart=bow-10*tanklength;engineend=tankstart-3000
+assert math.isclose(tankstart+10*tanklength,bow)
+poly([(0,H-2500),(9000,0),(bow,0),(L,H),(0,H),(0,H-2500)])
+line((9000,DB),(bow,DB));line((0,draft),(L,draft),'CENTER');text('КВЛ',L+1000,draft+200,350)
+bulk=[9000,engineend]+[tankstart+i*tanklength for i in range(11)]+[fore]
+for x in bulk:line((x,max(0,(x-bow)/12000*H)),(x,H))
+frames=[];x=0
+while x<=L:
+ frames.append(x);line((x,-650),(x,650),'MEMBER');x+=600 if x<9000 or x>=fore else 700
+for i,x in enumerate(frames):
+ if i%20==0:text(i,x,-2000,320)
+for x,t in [(0,'КП / AP'),(L/2,'Мидель'),(L,'НП / FP')]:line((x,-1000),(x,H+3500),'CENTER');text(t,x,H+4300,400)
+text('Пример / ТАНКЕР — ПРОДОЛЬНОЕ РАСПОЛОЖЕНИЕ',0,H+10000,850)
+for a,b,t in [(0,9000,'АП'),(9000,engineend,'МО'),(engineend,tankstart,'Коф.'),*[(tankstart+i*tanklength,tankstart+(i+1)*tanklength,f'Танк {i+1}') for i in range(10)],(bow,fore,'Коф.'),(fore,L,'ФП')]:text(t,(a+b)/2-600,4500,400)
+text('АП: a = 600',2000,-4200,350);text('ФП: a = 600',L-15000,-4200,350);text('a = 700; шаг рам 2100',55000,-4200,350)
+text(f'L = {L:.0f}; B = {B:.0f}; D = {H:.0f}; d = {draft:.0f} мм',55000,-6400,480);dimh(0,L,0,0,-3500);dimv(0,H,L,L,L+6500)
+begin('ARR_SECTION',0,101000);hull();members();text('ПОПЕРЕЧНОЕ СЕЧЕНИЕ',0,H+5000,550);dimh(0,B,0,0,-1800);dimv(0,H,B,B,B+1800);dimv(0,DB,0,0,-1600);dimh(0,DS,H,roof(DS),H+2200)
+leader((DS,8000),3800,8500,'Внутренний борт');leader((half,10000),half+2200,10400,'Продольная переборка');text('ГРУЗОВОЙ ТАНК ЛБ',4500,5000,350);text('ГРУЗОВОЙ ТАНК ПБ',half+3400,5000,350)
+text(f'R{R:.0f}',-2500,-800,250)
+for typ,x0 in [('DECK',39500),('BOTTOM',70000)]:
+ begin('ARR_'+typ,x0,101000);length=8400;width=half
+ for yy in [0,width-DS,width]:line((0,yy),(length,yy))
+ for x in range(0,length+1,2100):line((x,0),(x,width),'MEMBER')
+ for yy in [half-DS-x for x in cargo]+[width-x for x in wing]:line((0,yy),(length,yy),'CENTER')
+ for xx in [0,length]:line((xx,0),(xx,width),'SEAM')
+ text('ПАЛУБА — ПРОДОЛЬНЫЙ НАБОР' if typ=='DECK' else 'ДНИЩЕ — ПРОДОЛЬНЫЙ НАБОР',0,width+5600,430)
+ text('ДП',length+350,0,260);text('Участок x = 47 100...55 500',0,-3000,290)
+ dimh(0,length,0,0,-1500);dimv(0,width,length,length,length+1400);dimh(0,2100,width,width,width+1600);dimv(width-DS,width,length,length,length+2800,f'{DS:.0f}')
+ legend=['Поперечная переборка','Рамные бимсы','Внутренний борт','Продольная переборка','Продольные подпалубные балки'] if typ=='DECK' else ['Непроницаемый флор','Сплошной флор','Днищевой стрингер','Вертикальный киль','Доковая бракета','Скуловая бракета']
+ if typ=='BOTTOM':
+  for x in range(2100,length,2100):
+   for yy,sg in [(0,1),(width-DS,-1)]:poly([(x-450,yy),(x,yy+sg*600),(x+450,yy)],'MEMBER')
+ for i,t in enumerate(legend):text(f'{i+1} {t}',0,-5300-i*750,300)
+ # Numbered leaders preserve the original diagram/legend convention.
+ for n,p,x,y in [(1,(0,5000),1200,5700),(2,(4500,7000),5200,7700),(3,(6300,width-DS),6500,width-1100),(4,(6300,0),6500,900),(5,(7600,5*astep),8800,5*astep+650)]:leader(p,x,y,str(n))
+ if typ=='BOTTOM':leader((2100,width-DS-300),1000,width-DS-1100,'6')
+begin('ARR_SIDE',101000,101000)
+for yy in levels:line((0,yy),(9100,yy))
+for xx in range(0,9101,700):line((xx,DB),(xx,H),'MEMBER' if xx%2100 else 'HULL')
+line((0,draft),(9700,draft),'CENTER');text('КВЛ',9800,draft+150)
+text('БОРТ — ПОПЕРЕЧНЫЙ НАБОР',0,H+3600,460)
+dimh(0,9100,DB,DB,500);dimh(0,700,H,H,H+2200);dimh(2100,4200,H,H,H+1300)
+for lo,hi in zip(levels,levels[1:]):dimv(lo,hi,0,0,-1800)
+text('Платформы: z = 5 000; 8 250; 11 500',0,-1700,300)
+for i,t in enumerate(['Платформа двойного борта','Вертикальная диафрагма','Шпангоут']):text(f'{i+1} {t}',0,-5300-i*750,300)
+for n,p,x,y in [(1,(7000,8250),9600,8800),(2,(4200,13000),5000,13700),(3,(7700,10000),9600,10500)]:leader(p,x,y,str(n))
+begin('ARR_DETAIL',0,76000);text('УЗЕЛ А. ПРОДОЛЬНЫЕ ПОДПАЛУБНЫЕ БАЛКИ',0,2900,330)
+line((0,0),(DS+astep*2,0));line((DS,-900),(DS,1200))
+for x in wing+[DS+cargo[0],DS+cargo[1]]:line((x,0),(x,-300),'MEMBER')
+for a,b in [(0,wing[0]),(wing[0],wing[1]),(wing[1],DS),(DS,DS+cargo[0])]:dimh(a,b,0,0,-1500,f'{b-a:.0f}')
+text('700 + 13 x 750 + 700 = 11150',0,-2400,260)
+begin('TITLE',0,191000);text('Пример — ТАНКЕР. КОНСТРУКТИВНАЯ СХЕМА И РАСЧЁТНЫЕ СЕЧЕНИЯ',0,0,850)
+for style in d.styles:style.dxf.font='arial.ttf'
+d.header['$TILEMODE']=1;d.header['$INSUNITS']=4;d.set_modelspace_vport(height=220000,center=(80000,88000))
+for name,c,h,wid in [('01_Arrangement',(82000,133000),110000,180000),('02_Structures',(35500,18000),81000,86000),('03_Midship',(14400,8000),28000,43000)]:
+ if name in d.views:d.views.remove(name)
+ d.views.new(name,dxfattribs={'center':c,'height':h,'width':wid,'direction':(0,0,1),'target':(0,0,0)})
+dest=out/'Пример_проект.dxf';d.saveas(dest);check=ezdxf.readfile(dest);assert not check.audit().errors
+report={'layout':data['layout'],'entities':len(m),'dimensions':{'L':L,'B':B,'D':H,'d':draft,'double_bottom':DB,'side':DS,'bilge_radius':R},'manholes':[{'diameter':1000,'center':[DS/2,z+800],'sill':300} for z in levels[:-1]],'plates':plates,'profiles':profiles,'CL':cl,'floor':fl,'keel':vk,'net_bottom':net(0),'sea_bottom':sea(0)}
+(work/'cad_manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
+for tag,lim,size in [('all',(-8000,172000,-22000,196000),(14,17)),('arrangement',(-6000,171000,69000,188000),(18,13)),('detail',(-6000,36000,-5300,22200),(18,12)),('holes',(-2000,4500,1700,16500),(8,14)),('sections',(-6000,81000,-19500,58500),(18,16)),('pressure',(36500,68500,24500,57500),(12,13)),('plating',(39200,80000,-5300,22200),(17,12))]:
+ fig=plt.figure(figsize=size);ax=fig.add_axes([0,0,1,1]);Frontend(RenderContext(check),MatplotlibBackend(ax),config=Configuration(background_policy=BackgroundPolicy.MODELSPACE)).draw_layout(check.modelspace(),finalize=False);ax.set_xlim(lim[:2]);ax.set_ylim(lim[2:]);ax.set_aspect('equal',adjustable='box');ax.axis('off');fig.savefig(work/f'cad_{tag}.png',dpi=120,facecolor='#212830');plt.close(fig)
+print(json.dumps(report,ensure_ascii=False))

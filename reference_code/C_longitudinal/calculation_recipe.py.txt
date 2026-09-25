@@ -1,0 +1,274 @@
+import json, math, re, os
+from pathlib import Path
+P=Path.cwd(); W=P/'work/pecheneg_long'
+# DIN 1019, supplied scan page 2; h,s,c,A,G,ex,Ix.
+hpdata=[
+(80,6,14,6.20,4.87,4.78,39),(80,7,14,7,5.50,4.69,43.3),
+(100,7,15.5,8.74,6.86,5.87,85.3),(100,8,15.5,9.74,7.65,5.78,94.3),
+(120,7,17,10.5,8.25,7.08,148),(120,8,17,11.7,9.19,6.96,164),
+(140,7,19,12.6,9.74,8.31,241),(140,8,19,13.8,10.8,8.18,266),
+(160,7,22,14.6,11.4,9.66,373),(160,8,22,16.2,12.7,9.49,411),(160,9,22,17.8,14,9.36,448),
+(180,8,25,18.9,14.8,10.9,609),(180,9,25,20.7,16.2,10.7,663),(180,10,25,22.5,17.6,10.6,717),
+(200,9,28,23.6,18.5,12.1,941),(200,10,28,25.6,20.1,11.9,1020),(200,11.5,28,28.6,22.5,11.7,1126),
+(220,10,31,29,22.8,13.4,1400),(220,11.5,31,32.3,25.4,13.1,1550),
+(240,10,34,32.4,25.4,14.7,1860),(240,11,34,34.9,27.4,14.6,2000),(240,12,34,37.3,29.3,14.4,2130),
+(260,10,37,36.1,28.3,16.2,2477),(260,11,37,38.7,30.3,16,2610),(260,12,37,41.3,32.4,15.8,2770),
+(280,11,40,42.6,33.5,17.4,3330),(280,12,40,45.5,35.7,17.2,3550),
+(300,11,43,46.7,36.7,18.9,4190),(300,12,43,49.7,39,18.7,4460),(300,13,43,52.8,41.5,18.5,4720),
+(320,12,46,54.2,42.5,20.1,5530),(320,13,46,57.4,45,19.9,5850),
+(340,12,49,58.8,46.1,21.5,6760),(340,14,49,65.5,51.5,21.1,7540),
+(370,13,53.5,69.6,54.6,23.5,9470),(370,15,53.5,77,60.5,23,10490),
+(400,14,58,81.4,63.9,25.5,12930),(400,16,58,89.4,70.2,25,14220),
+(430,15,62.5,94.1,73.9,27.4,17260),(430,17,62.5,103,80.6,26.9,18860)]
+hp=[dict(zip(['h','s','b','A','mass','y','I'],p),name=f'HP {p[0]}x{p[1]:g}') for p in hpdata]
+V={}; cells={}; sheets=[]; current=None
+def sheet(k,ru,cn):
+ global current
+ current={'id':k,'ru':ru,'cn':cn,'rows':[]};sheets.append(current)
+def band(ru,cn): current['rows'].append({'band':[ru,cn]})
+env={'MAX':max,'MIN':min,'SQRT':math.sqrt,'PI':lambda:math.pi,'SIN':math.sin,'COS':math.cos,'ABS':abs,'CEILING':lambda x,s:math.ceil((x-1e-10)/s)*s,'IF':lambda c,a,b:a if c else b,'SUM':lambda *xs:sum(xs)}
+def a(k,ru,cn,x,unit='',desc=''):
+ if isinstance(x,str) and x.startswith('='):
+  exp=re.sub(r'\{([^}]+)\}',lambda m:repr(V[m[1]]),x[1:]).replace('^','**')
+  val=eval(exp,{'__builtins__':{}},env)
+ else: val=x
+ V[k]=val
+ row={'key':k,'labels':[ru,cn],'x':x,'v':val,'unit':unit,'desc':desc}
+ cells[k]=row;current['rows'].append(row);return val
+def f(k,ru,cn,x,unit='',desc=''):return a(k,ru,cn,'='+x,unit,desc)
+sheet('input','Исходные данные','基本参数')
+a('student','Студент','学生','Пример');a('type','Тип судна','船型','Сухогруз / 干货船')
+for k,ru,cn,v,u in [('L','Длина','船长',109,'m'),('B','Ширина','船宽',17.8,'m'),('D','Высота борта','型深',9.3,'m'),('d','Осадка','设计吃水',6.8,'m'),('Cb','Коэффициент общей полноты','方形系数',.7,'—'),('v','Скорость','航速',15,'kn')]:a(k,ru,cn,v,u)
+band('Геометрия и набор','几何与骨架')
+a('scheme','Набор верхней палубы и днища','上甲板与船底骨架','Продольный')
+a('sidescheme','Набор борта и нижней палубы','舷侧与下甲板骨架','Поперечный')
+f('dbmin','Расчётная высота двойного дна','双层底计算高度','({L}-40)/570+0.04*{B}+3.5*{d}/{L}','m')
+a('db','Высота двойного дна','双层底高度',1.2,'m');a('R','Радиус скулы','舭部半径',1.6,'m')
+f('cam','Погибь палубы','甲板梁拱','0.02*{B}','m')
+a('ld','Высота нижней палубы','下甲板高度',5.7,'m');a('hatch','Ширина люка','舱口宽度',8,'m')
+f('hold','Высота трюма','货舱高度','{ld}-{db}','m');f('tween','Высота твиндека','甲板间高度','{D}-{ld}','m')
+a('frame','Шпация','肋距',.75,'m');f('floor','Расстояние между флорами','实肋板间距','3*{frame}','m')
+a('al','Расчётный шаг продольных балок днища','船底纵骨计算间距',0.7,'m')
+f('ad','Шаг продольных балок верхней палубы','上甲板纵骨间距','({B}-{hatch})/2/7','m')
+a('bottomspan','Пролёт между продольными опорами днища','船底纵向支承间跨距',4,'m')
+f('sidewidth','Пролёт полубимса','半横梁跨距','({B}-{hatch})/2','m')
+a('bay','Длина расчётной цистерны','计算压载舱长度',18,'m');a('pillarspan','Шаг пиллерсов вдоль люка','舱口边支柱纵向间距',4.5,'m')
+a('cargo','Плотность сухого груза','干货密度',.6,'t/m³');a('rho','Плотность балласта','压载水密度',1.025,'t/m³');a('g','Ускорение тяжести','重力加速度',9.81,'m/s²')
+f('dball','Балластная осадка (принято 0.6d)','压载吃水（取0.6d）','0.6*{d}','m')
+f('air','Высота воздушной трубы над вторым дном','空气管高出内底','{D}-{db}+0.76','m')
+a('valve','Давление клапана','阀压力',25,'kPa');a('yield','Предел текучести','屈服强度',235,'MPa');a('eta','Коэффициент материала','材料系数',1,'—')
+a('life','Срок службы','使用年限',25,'yr');a('startcor','Начало коррозионной прибавки','腐蚀余量起算年限',12,'yr')
+a('deckglobal','Толщина палубы по общей прочности','总纵强度采用甲板厚度',float(os.environ.get('PECH_DECK','19')),'mm')
+f('keelwidth','Ширина горизонтального киля и ширстрека','平板龙骨及舷顶列板宽度','(800+5*{L})/1000','m')
+f('ibedge','Полуширина второго дна','内底半宽','{B}/2-{R}+SQRT({R}^2-({R}-{db})^2)','m')
+f('deckmax','Высота палубы у кромки люка','舱口边甲板高度','{D}+{cam}*(1-({hatch}/{B})^2)','m')
+
+sheet('loads','Нагрузки','荷载')
+f('cw','Волновой коэффициент','波浪系数','IF({L}<=90,0.0856*{L},10.75-((300-{L})/100)^1.5)','m')
+a('ax','Коэффициент ax','系数ax',.267);a('avax','Коэффициент av/ax','系数av/ax',.6)
+f('pw0','Волновое давление на ватерлинии','水线波浪压力','5*{cw}*{avax}','kPa')
+f('az','Вертикальное ускорение','垂向加速度','{g}*0.9/{L}^0.333','m/s²')
+f('theta','Амплитуда бортовой качки','横摇角','0.6/(1+0.005*{L})','rad');f('psi','Амплитуда килевой качки','纵摇角','0.23/(1+0.01*{L})','rad')
+def sea(k,z,dkey='d'):
+ f(k+'z','Аппликата z','计算点高度',z,'m')
+ f(k+'st','Гидростатическое давление','静水压力',f'10*MAX({{{dkey}}}-{{{k}z}},0)','kPa')
+ f(k+'w','Волновое давление','波浪压力',f'MAX(0,IF({{{k}z}}<={{{dkey}}},{{pw0}}-1.5*{{cw}}*({{{dkey}}}-{{{k}z}})/{{{dkey}}},{{pw0}}-7.5*{{ax}}*({{{k}z}}-{{{dkey}}})))','kPa')
+ f(k,'Наружное давление','外部压力',f'{{{k}st}}+{{{k}w}}','kPa')
+for code,z in [('SEA0','0'),('SEAE','{R}'),('SEAF','{R}+2'),('SEAG','{R}+4'),('SEAH','{D}-{keelwidth}'),('SEAD','{D}'),('SEAFR','({db}+{ld})/2'),('SEATW','({ld}+{D})/2')]:
+ band(code+' — море',code+' — 海水');sea(code,z)
+band('Двойное дно: балласт и пустой трюм','双层底：压载水与空货舱')
+def liquid(k,h):
+ f(k+'h','Высота жидкости над точкой','点上液柱高度',h,'m')
+ for j,expr in enumerate([f'{{rho}}*({{g}}+{{az}})*{{{k}h}}',f'{{rho}}*{{g}}*({{{k}h}}+{{B}}/2*{{theta}})',f'{{rho}}*{{g}}*({{{k}h}}+{{bay}}*{{psi}})',f'0.75*{{rho}}*{{g}}*({{{k}h}}+{{air}})',f'{{rho}}*{{g}}*{{{k}h}}+{{valve}}'],1):f(k+str(j),f'Давление p{j}',f'液压p{j}',expr,'kPa')
+ f(k,'Огибающая внутреннего давления','内部压力包络','MAX('+','.join('{'+k+str(j)+'}' for j in range(1,6))+')','kPa')
+liquid('PB0','{db}');liquid('PBI','0');sea('SEAB0','0','dball')
+f('PEXTMIN','Внешнее противодавление при балласте','压载工况外部反压力','MAX({SEAB0st}-{SEAB0w},0)','kPa')
+f('PNET','Нетто-давление на днище при балласте','压载船底净压力','MAX({PB0}-{PEXTMIN},ABS({PB0}-{SEAB0}))','kPa')
+f('PBottom','Расчётное давление днища','船底控制压力','MAX({SEA0},{PNET})','kPa')
+f('PCIB','Давление груза на второе дно','内底货物压力','{cargo}*({g}+{az})*{hold}','kPa')
+f('PIB','Расчётное давление второго дна','内底控制压力','MAX({PBI},{PCIB})','kPa')
+f('PLD','Давление груза на нижнюю палубу','下甲板货物压力','{cargo}*({g}+{az})*{tween}','kPa')
+f('PD','Давление на верхнюю палубу','上甲板控制压力','MAX(0.7*{SEAD},0.015*{L}+7)','kPa')
+f('PHF','Давление на шпангоут трюма','货舱肋骨压力','MAX({SEAFR},10*MAX({d}-{SEAFRz},0)+0.15*{L}+10)','kPa')
+
+sheet('plates','Листы','板厚')
+plates={}
+def plate(code,ru,cn,spacing,span,pressure,ks,u,smin,extra=0):
+ band(code+' — '+ru,code+' — '+cn)
+ pre=code+'_'
+ for k,r,c,ex,un in [('a','Шаг','间距',spacing,'m'),('b','Пролёт','跨距',span,'m'),('p','Давление','压力',pressure,'kPa')]:f(pre+k,r,c,ex,un)
+ a(pre+'ks','Коэффициент kσ','应力系数',ks);a(pre+'u','Скорость коррозии','腐蚀速率',u,'mm/yr')
+ f(pre+'k','Коэффициент панели','板格系数',f'MIN(1.2-0.5*{{{pre}a}}/{{{pre}b}},1)')
+ f(pre+'cor','Коррозионная прибавка','腐蚀余量',f'{{{pre}u}}*({{life}}-{{startcor}})','mm')
+ f(pre+'net','Чистая толщина','净厚度',f'15.8*{{{pre}a}}*{{{pre}k}}*SQRT({{{pre}p}}/({{{pre}ks}}*{{yield}}))','mm')
+ f(pre+'min','Минимальная толщина','最小厚度',smin,'mm')
+ f(pre+'req','Требуемая толщина','要求厚度',f'MAX({{{pre}net}}+{{{pre}cor}},{{{pre}min}})','mm')
+ f(pre+'s','Принятая толщина','采用板厚',f'MAX(CEILING({{{pre}req}},1),{{deckglobal}})' if code=='DK' else f'CEILING({{{pre}req}},1)+{extra}','mm')
+ plates[code]={'ru':ru,'cn':cn,'s':V[pre+'s'],'req':V[pre+'req']}
+plate('K','Горизонтальный киль','平板龙骨','{al}','{floor}','{PBottom}',.6,.2,'5.5+0.04*{L}',2)
+plate('A','Днище A–D','船底A–D','{al}','{floor}','{PBottom}',.6,.2,'5.5+0.04*{L}')
+for code,u,span,ks in [('E',.17,'{hold}',.6),('F',.17,'{hold}',.6),('G',.1,'{hold}',.6),('H',.1,'{tween}',.6)]:plate(code,'Обшивка борта '+code,'舷侧外板'+code,'{frame}',span,'{SEA'+code+'}',ks,u,'5.5+0.04*{L}')
+plate('IB','Настил второго дна','内底板','{al}','{floor}','{PIB}',.8,.15,'5+0.035*{L}')
+plate('IM','Крайний междудонный лист','内底边板','{al}','{floor}','{PIB}',.8,.2,'5+0.035*{L}')
+plate('DK','Верхняя палуба','上甲板','{ad}','{floor}','{PD}',.6,.1,'4+0.05*{L}')
+plate('LD','Нижняя палуба','下甲板','{frame}','{sidewidth}','{PLD}',.9,.11,'4+0.04*{L}')
+
+sheet('floorcalc','Флоры и киль','肋板与桁材')
+f('falpha','Коэффициент флора α','实肋板系数α','0.023*{L}+5.8');a('fk1','Коэффициент k1','系数k1',1.45);a('fk2','Коэффициент k2','系数k2',.93)
+f('f_req','Расчётная толщина флора','实肋板计算厚度','{falpha}*{fk1}*{fk2}*{al}*SQRT({eta})+0.2*({life}-{startcor})','mm')
+f('f_s','Принятая толщина флора','实肋板采用厚度','CEILING({f_req},1)','mm')
+f('vkalpha','Коэффициент киля α','中桁材系数α','MIN(0.03*{L}+8.3,11.2)')
+f('vk_req','Расчётная толщина вертикального киля','中桁材计算厚度','{vkalpha}*{dbmin}^2/{db}*SQRT({eta})+0.2*({life}-{startcor})','mm')
+f('vk_s','Принятая толщина вертикального киля','中桁材采用厚度','MAX(CEILING({vk_req},1),{f_s}+1)','mm')
+f('sg_s','Толщина днищевых стрингеров','旁桁材厚度','{vk_s}','mm');a('sg_x','Отстояние стрингеров от ДП','旁桁材距中线',4,'m')
+a('holew','Ширина прохода во флоре','肋板人孔净宽',600,'mm');a('holeh','Высота прохода во флоре','肋板人孔净高',800,'mm');a('holesill','Нижняя кромка прохода над днищем','人孔下缘距船底',200,'mm')
+
+sheet('catalog','HP DIN1019','HP型材表')
+for i,p in enumerate(hp):
+ band(p['name'],p['name'])
+ for k,ru,cn,u in [('h','Высота','高度','mm'),('s','Толщина стенки','腹板厚度','mm'),('b','Ширина бульба','球头宽','mm'),('A','Площадь','面积','cm²'),('mass','Масса','质量','kg/m'),('y','Центр тяжести от подошвы','重心距底','cm'),('I','Момент инерции профиля','自身惯性矩','cm⁴')]:a('hp'+str(i)+k,ru,cn,p[k],u)
+ p['ix']=i
+def combined(p,b,t):
+ ar=b*t;e=p['A']*(p['y']+t/2)/(p['A']+ar)
+ I=p['I']+b*t**3/12+p['A']*(p['y']+t/2)**2-(p['A']+ar)*e**2
+ return min(I/(p['h']/10+t/2-e),I/(e+t/2))
+sheet('beams','Балки','骨材选型')
+beams={}
+def beam(code,ru,cn,spacing,span,pressure,ks,m,u,plat,smin):
+ band(code+' — '+ru,code+' — '+cn)
+ for k,r,c,ex,unit in [('a','Шаг / грузовая ширина','间距／负担宽',spacing,'m'),('l','Пролёт','跨距',span,'m'),('p','Давление','压力',pressure,'kPa')]:f(code+k,r,c,ex,unit)
+ a(code+'ks','Коэффициент kσ','应力系数',ks);a(code+'m','Коэффициент момента m','弯矩系数m',m);a(code+'u','Скорость коррозии','腐蚀速率',u,'mm/yr')
+ f(code+'Wnet','Чистый момент сопротивления','净截面模数',f'1000*{{{code}p}}*{{{code}a}}*{{{code}l}}^2/({{{code}m}}*{{{code}ks}}*{{yield}})','cm³')
+ f(code+'alpha','Коэффициент αк','腐蚀系数αк',f'IF({{{code}Wnet}}<200,MIN(0.07+6/{{{code}Wnet}},0.25),(0.01+1/{{{code}Wnet}})/0.15)')
+ f(code+'Wreq','Требуемый момент сопротивления','要求截面模数',f'{{{code}Wnet}}*(1+{{{code}alpha}}*{{{code}u}}*({{life}}-{{startcor}}))','cm³')
+ f(code+'b','Эффективная ширина пояска','有效带板宽',f'MIN({{{code}l}}/6,{{{code}a}})*100','cm')
+ f(code+'t','Толщина присоединённого пояска','带板厚度',plat+'/10','cm');f(code+'smin','Минимальная толщина стенки','最小腹板厚',smin,'mm')
+ avail=[p for p in hp if p['s']>=V[code+'smin'] and combined(p,V[code+'b'],V[code+'t'])>=V[code+'Wreq']]
+ assert avail,code
+ p=min(avail,key=lambda p:p['mass']);idx='hp'+str(p['ix']);a(code+'profile','Выбранный профиль','采用型材',p['name'])
+ for key,ru1,cn1,unit in [('h','Высота профиля','型材高度','mm'),('s','Стенка профиля','型材腹板厚','mm'),('A','Площадь профиля','型材面积','cm²'),('y','Центр тяжести профиля','型材重心','cm'),('I','Собственная инерция','型材自身惯性矩','cm⁴')]:f(code+key,ru1,cn1,'{'+idx+key+'}',unit)
+ f(code+'area','Площадь пояска','带板面积',f'{{{code}b}}*{{{code}t}}','cm²')
+ f(code+'e','Центр тяжести составного сечения','组合截面重心',f'{{{code}A}}*({{{code}y}}+{{{code}t}}/2)/({{{code}A}}+{{{code}area}})','cm')
+ f(code+'It','Инерция составного сечения','组合截面惯性矩',f'{{{code}I}}+{{{code}b}}*{{{code}t}}^3/12+{{{code}A}}*({{{code}y}}+{{{code}t}}/2)^2-({{{code}A}}+{{{code}area}})*{{{code}e}}^2','cm⁴')
+ f(code+'W','Меньший момент сопротивления','组合截面较小截面模数',f'MIN({{{code}It}}/({{{code}h}}/10+{{{code}t}}/2-{{{code}e}}),{{{code}It}}/({{{code}e}}+{{{code}t}}/2))','cm³')
+ f(code+'ratio','W / Wтреб','实际／要求截面模数',f'{{{code}W}}/{{{code}Wreq}}')
+ beams[code]={'ru':ru,'cn':cn,'hp':p,'Wreq':V[code+'Wreq'],'W':V[code+'W'],'a':V[code+'a'],'l':V[code+'l']}
+beam('BL','Продольная балка днища','船底纵骨','{al}','{floor}','{PBottom}',.5,12,.2,'{A_s}','5.5+0.025*{L}')
+beam('IL','Продольная балка второго дна','内底纵骨','{al}','{floor}','{PIB}',.66,12,.2,'{IB_s}','5.5+0.025*{L}')
+beam('DL','Продольная балка верхней палубы','上甲板纵骨','{ad}','{floor}','{PD}',.45,12,.1,'{DK_s}','0')
+beam('FH','Шпангоут в трюме','货舱肋骨','{frame}','{hold}','{PHF}',.65,18,.1,'MIN({E_s},{F_s},{G_s})','0')
+beam('FT','Шпангоут в твиндеке','甲板间肋骨','{frame}','{tween}','{SEATW}',.65,10,.1,'MIN({G_s},{H_s})','0')
+beam('LB','Бимс нижней палубы','下甲板横梁','{frame}','{sidewidth}','{PLD}',.65,10,.11,'{LD_s}','0')
+
+sheet('girders','Рамные балки','强横梁与纵桁')
+girders={}
+def tgprops(h,sw,b,tf,eff,t):
+ parts=[(h*sw,h/2,h**3*sw/12),(b*tf,h+tf/2,b*tf**3/12),(eff*t,-t/2,eff*t**3/12)]
+ area=sum(p[0] for p in parts);z=sum(p[0]*p[1] for p in parts)/area
+ I=sum(p[2]+p[0]*(p[1]-z)**2 for p in parts)
+ return I/max(z+t,h+tf-z)
+def tg(code,ru,cn,loadwidth,span,pressure,plate,preset=None,nweb=1,u=.11):
+ band(code+' — '+ru,code+' — '+cn)
+ for k,r,c,ex,un in [('a','Грузовая ширина','负担宽度',loadwidth,'m'),('l','Пролёт','跨距',span,'m'),('p','Давление','压力',pressure,'kPa'),('t','Толщина настила','附连甲板厚',plate+'/10','cm')]:f(code+k,r,c,ex,un)
+ a(code+'nw','Число стенок','腹板数量',nweb);a(code+'u','Скорость коррозии','腐蚀速率',u,'mm/yr')
+ f(code+'Wnet','Чистый момент сопротивления','净截面模数',f'1000*{{{code}a}}*{{{code}p}}*{{{code}l}}^2/(10*0.65*{{yield}})','cm³')
+ f(code+'alpha','Коэффициент αк','腐蚀系数',f'IF({{{code}Wnet}}<200,MIN(0.07+6/{{{code}Wnet}},0.25),(0.01+1/{{{code}Wnet}})/0.15)')
+ f(code+'Wreq','Требуемый момент сопротивления','要求截面模数',f'{{{code}Wnet}}*(1+{{{code}alpha}}*{{{code}u}}*({{life}}-{{startcor}}))','cm³')
+ f(code+'eff','Эффективная ширина пояска','有效带板宽',f'MIN({{{code}l}}/6,{{{code}a}})*100','cm')
+ candidates=[]
+ for h in [30,35,40,45,50,55,60,65,70]:
+  for sw in [.8,1,1.2]:
+   for b in [12,15,18,20,25,30]:
+    for tf in [1.2,1.4,1.6,2]:
+     if b<.3*h or h/sw>60:continue
+     if tgprops(h,sw,b,tf,V[code+'eff'],V[code+'t'])>=V[code+'Wreq']:candidates.append((h*sw+b*tf,h,sw,b,tf))
+ assert candidates,code
+ _,h,sw,b,tf=min(candidates)
+ if preset:h,sw,b,tf=preset
+ for key,ru1,cn1,v in [('h','Высота стенки','腹板高',h),('sw','Толщина стенки','腹板厚',sw),('b','Ширина пояска','面板宽',b),('tf','Толщина пояска','面板厚',tf)]:a(code+key,ru1,cn1,v,'cm')
+ f(code+'Aw','Площадь стенки','腹板面积',f'{{{code}nw}}*{{{code}h}}*{{{code}sw}}','cm²');f(code+'Af','Площадь пояска','面板面积',f'{{{code}b}}*{{{code}tf}}','cm²');f(code+'Ap','Площадь присоединённого настила','附连甲板面积',f'{{{code}eff}}*{{{code}t}}','cm²')
+ f(code+'Ac','Общая площадь','组合面积',f'{{{code}Aw}}+{{{code}Af}}+{{{code}Ap}}','cm²')
+ f(code+'e','Центр тяжести от верха стенки','距腹板上缘组合重心',f'({{{code}Aw}}*{{{code}h}}/2+{{{code}Af}}*({{{code}h}}+{{{code}tf}}/2)-{{{code}Ap}}*{{{code}t}}/2)/{{{code}Ac}}','cm')
+ f(code+'It','Момент инерции составного сечения','组合截面惯性矩',f'{{{code}nw}}*{{{code}h}}^3*{{{code}sw}}/12+{{{code}b}}*{{{code}tf}}^3/12+{{{code}eff}}*{{{code}t}}^3/12+{{{code}Aw}}*({{{code}h}}/2-{{{code}e}})^2+{{{code}Af}}*({{{code}h}}+{{{code}tf}}/2-{{{code}e}})^2+{{{code}Ap}}*(-{{{code}t}}/2-{{{code}e}})^2','cm⁴')
+ f(code+'W','Меньший момент сопротивления','组合较小截面模数',f'{{{code}It}}/MAX({{{code}e}}+{{{code}t}},{{{code}h}}+{{{code}tf}}-{{{code}e}})','cm³');f(code+'ratio','W / Wтреб','实际／要求',f'{{{code}W}}/{{{code}Wreq}}')
+ girders[code]={'h':h*10,'sw':sw*10,'b':b*10,'tf':tf*10,'nweb':nweb,'W':V[code+'W'],'req':V[code+'Wreq'],'ru':ru,'cn':cn}
+tg('DG','Карлингс верхней палубы','上甲板舱口边纵桁','{sidewidth}/2','{pillarspan}','{PD}','{DK_s}',preset=(50,1,25,2.5),u=.1)
+tg('LG','Карлингс нижней палубы','下甲板舱口边纵桁','{sidewidth}/2','{pillarspan}','{PLD}','{LD_s}',preset=(55,1.2,77,2.5),nweb=2)
+tg('RB','Рамный полубимс верхней палубы','上甲板强半横梁','{floor}','{sidewidth}','{PD}','{DK_s}',u=.1)
+band('Кницы','肘板')
+for code,ru,cn,expr,adopt in [('KD','Кница верхней палубы','上甲板肘板','50*SQRT(MIN({RBWreq},{FTWreq})/MIN({RBsw}*10,{FTs}))',300),('KL','Кница нижней палубы','下甲板肘板','50*SQRT(MIN({LBWreq},{FHWreq})/MIN({LBs},{FHs}))',350),('KF','Кница бракетного флора','框架肋板肘板','50*SQRT(MAX({BLWreq},{ILWreq})/{f_s})',500)]:
+ f(code+'req',ru+' — расчётный катет',cn+'计算肘长',expr,'mm');a(code+'leg',ru+' — принятый катет',cn+'采用肘长',adopt,'mm')
+ f(code+'s',ru+' — толщина',cn+'厚度','{f_s}' if code=='KF' else 'MIN({RBsw}*10,{FTs})' if code=='KD' else 'MIN({LBs},{FHs})','mm')
+
+sheet('global','Общая прочность','总纵强度')
+f('displ','Водоизмещение','排水量','1.025*{L}*{B}*{d}*{Cb}','t');a('ksw','Коэффициент тихой воды','静水弯矩系数',60)
+f('mswp','Статический момент, перегиб','静水中拱弯矩','{g}*{L}*{displ}/{ksw}','kN·m');f('mswm','Статический момент, прогиб','静水中垂弯矩','-0.75*{mswp}','kN·m')
+f('mwp','Волновой момент, перегиб','波浪中拱弯矩','190*{cw}*{B}*{L}^2*{Cb}*0.001','kN·m');f('mwm','Волновой момент, прогиб','波浪中垂弯矩','-110*{cw}*{B}*{L}^2*({Cb}+0.7)*0.001','kN·m')
+f('mp','Суммарный момент, перегиб','总中拱弯矩','{mswp}+{mwp}','kN·m');f('mm','Суммарный момент, прогиб','总中垂弯矩','{mswm}+{mwm}','kN·m');f('mt','Расчётный момент','控制弯矩','MAX({mp},ABS({mm}))','kN·m')
+f('allow','Допускаемое напряжение','许用应力','175/{eta}','MPa');f('Wstress','W по напряжениям','按应力所需W','{mt}/{allow}*1000','cm³');f('Wmin','Минимальный W','最小W','{cw}*{B}*{L}^2*({Cb}+0.7)*{eta}','cm³');f('Wreq','Требуемый W палубы и днища','甲板和船底要求W','MAX({Wstress},{Wmin})','cm³');f('Ireq','Минимальный I','最小惯性矩','{cw}*{B}*{L}^3*({Cb}+0.7)','cm⁴')
+
+sheet('eq','Эквивалентный брус','等效梁')
+eq=[]
+def part(code,ru,cn,n,area,z,i0):
+ band(code+' — '+ru,code+' — '+cn)
+ a(code+'n','Количество','数量',n)
+ for key,r,c,ex,unit in [('area','Площадь одного элемента','单件面积',area,'cm²'),('z','Высота центра тяжести от ОП','距基线重心高度',z,'cm'),('i0','Собственная инерция одного элемента','单件自身惯性矩',i0,'cm⁴')]:f(code+key,r,c,ex,unit)
+ f(code+'A','Полная площадь','总面积',f'{{{code}n}}*{{{code}area}}','cm²');f(code+'S','Статический момент','面积静矩',f'{{{code}A}}*{{{code}z}}','cm³');f(code+'Q','Инерция относительно ОП','对基线惯性矩',f'{{{code}n}}*{{{code}i0}}+{{{code}A}}*{{{code}z}}^2','cm⁴')
+ eq.append({'code':code,'ru':ru,'cn':cn,'n':n,'A':V[code+'A'],'z':V[code+'z'],'i0':V[code+'i0'],'Q':V[code+'Q']})
+part('EK','Горизонтальный киль','平板龙骨',1,'{keelwidth}*100*{K_s}/10','0','{keelwidth}*100*({K_s}/10)^3/12')
+part('EB','Плоское днище без киля','扣除平板龙骨的平直船底',2,'({B}/2-{R}-{keelwidth}/2)*100*{A_s}/10','0','({B}/2-{R}-{keelwidth}/2)*100*({A_s}/10)^3/12')
+part('ER','Скуловой пояс','舭部弧板',2,'{R}*100*PI()/2*{A_s}/10','{R}*100*(1-2/PI())','{R}*100*PI()/2*{A_s}/10*(({R}*100)^2*(0.5-4/PI()^2)+({A_s}/10)^2/24)')
+for code,lo,hi in [('E','{R}','{R}+2'),('F','{R}+2','{R}+4'),('G','{R}+4','{D}-{keelwidth}'),('H','{D}-{keelwidth}','{D}')]:
+ part('ES'+code,'Обшивка борта '+code,'舷侧外板'+code,2,f'(({hi})-({lo}))*100*{{{code}_s}}/10',f'(({hi})+({lo}))*50',f'((({hi})-({lo}))*100)^3*{{{code}_s}}/10/12')
+part('EI','Настил второго дна','内底板',2,'({ibedge}-1)*100*{IB_s}/10','{db}*100','({ibedge}-1)*100*({IB_s}/10)^3/12')
+part('EM','Крайний междудонный лист','内底边板',2,'100*{IM_s}/10','{db}*100','100*({IM_s}/10)^3/12')
+part('EV','Вертикальный киль','中桁材',1,'{db}*100*{vk_s}/10','{db}*50','({db}*100)^3*{vk_s}/10/12')
+part('EG','Днищевые стрингеры','旁桁材',2,'{db}*100*{sg_s}/10','{db}*50','({db}*100)^3*{sg_s}/10/12')
+part('ELD','Настил нижней палубы за вычетом люка','扣除舱口的下甲板',2,'{sidewidth}*100*{LD_s}/10','{ld}*100','{sidewidth}*100*({LD_s}/10)^3/12')
+# Upper deck broken into exact straight segments of the CAD polyline; hatch excluded.
+decksegments=[]
+for i in range(14):
+ x0=V['hatch']/2+V['sidewidth']*i/14;x1=V['hatch']/2+V['sidewidth']*(i+1)/14
+ z0=V['D']+V['cam']*(1-(x0/(V['B']/2))**2);z1=V['D']+V['cam']*(1-(x1/(V['B']/2))**2)
+ band('DK'+str(i+1),'DK'+str(i+1))
+ k='ED'+str(i+1)
+ f(k+'x0','Начало по ширине от ДП','距中线横坐标起点',f'{{hatch}}/2+{{sidewidth}}*{i}/14','m');f(k+'x1','Конец по ширине от ДП','距中线横坐标终点',f'{{hatch}}/2+{{sidewidth}}*{i+1}/14','m')
+ f(k+'z0','Высота начала','起点高度',f'{{D}}+{{cam}}*(1-({{{k}x0}}/({{B}}/2))^2)','m');f(k+'z1','Высота конца','终点高度',f'{{D}}+{{cam}}*(1-({{{k}x1}}/({{B}}/2))^2)','m')
+ f(k+'len','Длина участка палубы','甲板段长度',f'SQRT(({{{k}x1}}-{{{k}x0}})^2+({{{k}z1}}-{{{k}z0}})^2)','m')
+ part(k,'Верхняя палуба '+str(i+1),'上甲板段'+str(i+1),2,f'{{{k}len}}*100*{{DK_s}}/10',f'({{{k}z0}}+{{{k}z1}})*50',f'{{{k}len}}*100*{{DK_s}}/10*((({{{k}z1}}-{{{k}z0}})*100)^2+({{DK_s}}/10)^2*(({{{k}x1}}-{{{k}x0}})/{{{k}len}})^2)/12')
+ decksegments.append([x0,z0,x1,z1])
+# Actual longitudinal positions: divide each girder bay independently.
+bottom_x=[4*i/6 for i in range(1,6)]+[4+(V['B']/2-V['R']-4)*i/5 for i in range(1,5)]
+inner_x=[4*i/6 for i in range(1,6)]+[4+(V['ibedge']-4)*i/7 for i in range(1,7)]
+deck_x=[V['hatch']/2+i*V['ad'] for i in range(1,7)]
+part('EBL','Продольные балки днища','船底纵骨',2*len(bottom_x),'{BLA}','{BLy}','{BLI}')
+part('EIL','Продольные балки второго дна','内底纵骨',2*len(inner_x),'{ILA}','{db}*100-{ILy}','{ILI}')
+for i,x in enumerate(deck_x,1):
+ part('EDL'+str(i),'Продольная балка палубы '+str(i),'甲板纵骨'+str(i),2,'{DLA}',f'({{D}}+{{cam}}*(1-(({{hatch}}/2+{i}*{{ad}})/({{B}}/2))^2))*100-{{DLy}}','{DLI}')
+# Transverse frames, lower deck beams and strong half-beams are excluded.
+
+for code,z in [('DG','{deckmax}*100'),('LG','{ld}*100')]:
+ part('E'+code+'W','Стенка карлингса '+code,'舱口边纵桁腹板'+code,2,'{'+code+'Aw}',z+'-{'+code+'h}/2','{'+code+'nw}*{'+code+'h}^3*{'+code+'sw}/12')
+ part('E'+code+'F','Поясок карлингса '+code,'舱口边纵桁面板'+code,2,'{'+code+'Af}',z+'-{'+code+'h}-{'+code+'tf}/2','{'+code+'b}*{'+code+'tf}^3/12')
+band('ИТОГОВЫЕ ХАРАКТЕРИСТИКИ СЕЧЕНИЯ','截面最终结果')
+for k,ru,cn,suf,unit in [('Area','Площадь полного сечения','完整截面面积','A','cm²'),('Static','Статический момент относительно ОП','对基线面积静矩','S','cm³'),('Inertia0','Инерция относительно ОП','对基线惯性矩','Q','cm⁴')]:f(k,ru,cn,'SUM('+','.join('{'+p['code']+suf+'}' for p in eq)+')',unit)
+f('NA','Нейтральная ось над основной плоскостью','中和轴距基平面高度','{Static}/{Area}/100','m')
+f('Inertia','Инерция относительно нейтральной оси','对中和轴惯性矩','{Inertia0}-{Area}*({NA}*100)^2','cm⁴')
+f('WB','Момент сопротивления на уровне днища','船底截面模数','{Inertia}/({NA}*100)','cm³')
+f('WD','Момент сопротивления на уровне палубы','甲板截面模数','{Inertia}/(({deckmax}-{NA})*100)','cm³')
+for k,target,ru,cn in [('WB','Wreq','Днище WB / Wтреб','船底实际／要求W'),('WD','Wreq','Палуба WD / Wтреб','甲板实际／要求W'),('Inertia','Ireq','I / Imin','实际／最小I')]:f(k+'ratio',ru,cn,'{'+k+'}/{'+target+'}')
+f('sigmaD','Максимальное напряжение палубы','甲板最大弯曲应力','{mt}*1000/{WD}','MPa');f('sigmaB','Максимальное напряжение днища','船底最大弯曲应力','{mt}*1000/{WB}','MPa')
+
+# Compact results sheet placed first, all outputs link to actual calculation cells.
+sheet('summary','Результаты','计算结果')
+a('heading','Пример — сухогруз','Пример — 干货船','109 × 17.8 × 9.3 m; d = 6.8 m')
+f('sum_scheme','Верхняя палуба и днище','上甲板与船底骨架','{scheme}')
+f('sum_sidescheme','Борт и нижняя палуба','舷侧与下甲板骨架','{sidescheme}')
+for k,ru,cn,unit in [('NA','Нейтральная ось над ОП','中和轴距基线高度','m'),('Inertia','Момент инерции сечения','截面惯性矩','cm⁴'),('WB','Момент сопротивления днища','船底截面模数','cm³'),('WD','Момент сопротивления палубы','甲板截面模数','cm³'),('Wreq','Требуемый момент сопротивления','要求截面模数','cm³'),('Ireq','Минимальный момент инерции','最小惯性矩','cm⁴'),('WBratio','WB / Wтреб','船底截面模数比','—'),('WDratio','WD / Wтреб','甲板截面模数比','—'),('Inertiaratio','I / Imin','惯性矩比','—')]:f('sum'+k,ru,cn,'{'+k+'}',unit)
+band('Толщины и профили','板厚与型材')
+for code,p in plates.items():f('sum'+code,p['ru'],p['cn'],'{'+code+'_s}','mm')
+for code,b in beams.items():a('sum'+code,b['ru'],b['cn'],b['hp']['name'])
+sheets.insert(0,sheets.pop())
+record={'sheets':sheets,'values':V,'cells':cells,'plates':plates,'beams':beams,'girders':girders,'eq':eq,'hp':hp,'decksegments':decksegments,'bottom_x':bottom_x,'inner_x':inner_x,'deck_x':deck_x}
+(W/'model.json').write_text(json.dumps(record,ensure_ascii=False,indent=2),encoding='utf8')
+print(json.dumps({'plates':plates,'beams':{k:[p['hp']['name'],p['Wreq'],p['W']] for k,p in beams.items()},'girders':girders,'global':{k:V[k] for k in ['NA','Inertia','WB','WD','Wreq','Ireq','WBratio','WDratio','Inertiaratio']}},ensure_ascii=False,indent=2))

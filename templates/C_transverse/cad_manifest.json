@@ -1,0 +1,30 @@
+{
+  "entities": 932,
+  "units": "mm",
+  "dimensions": 28,
+  "layers": 110,
+  "parameters": {
+    "L": 109,
+    "B": 17.8,
+    "D": 9.3,
+    "d": 6.8,
+    "Cb": 0.7,
+    "v": 15,
+    "db": 1.2,
+    "ld": 5.7,
+    "hatch": 8
+  },
+  "views": [
+    "longitudinal profile",
+    "upper deck",
+    "bottom",
+    "lower deck",
+    "side",
+    "framing scheme",
+    "pressure",
+    "plating",
+    "structural midship",
+    "floor access",
+    "sections"
+  ]
+}

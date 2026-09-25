@@ -1,0 +1,129 @@
+import fs from 'node:fs/promises';
+import {FileBlob,SpreadsheetFile} from '@oai/artifact-tool';
+const out='outputs/Пример_修正', work='work/vladimir';
+const maps=JSON.parse(await fs.readFile('work/integrate_23_09/mapping.json','utf8'));
+const prep=JSON.parse(await fs.readFile('work/integrate_23_09/prepared.json','utf8'));
+const reports={};
+for(const lang of ['ru']){
+ const cn=lang==='cn', w=await SpreadsheetFile.importXlsx(await FileBlob.load('outputs/Пример_整合作业/Пример_расчёты.xlsx'));
+ const name=s=>prep[lang].find(p=>p.oldName===s)?.name||s;
+ const sh=s=>w.worksheets.getItem(name(s));
+ const ref=(s,a)=>`'${name(s)}'!${maps[s][a]}`;
+ const put=(sheet,a,v)=>{let r=sheet.getRange(a);if(typeof v==='string'&&v.startsWith('='))r.formulas=[[v]];else r.values=[[v]];};
+ const set=(s,a,v)=>put(sh(s),maps[s][a],v),get=(s,a)=>sh(s).getRange(maps[s][a]).values[0][0];
+ const inp=r=>ref('Исходные данные','B'+r),eq=(c,r)=>ref('Эквивалентный брус',c+r);
+ if(!cn){let b=await w.render({sheetName:'Содержание',range:'A1:D18',scale:1,format:'png'});await fs.writeFile(`${work}/template.png`,new Uint8Array(await b.arrayBuffer()));}
+ // Assigned dimensions and coherent adopted geometry for Пример.
+ for(const [r,v] of [[4,141],[5,25.4],[6,14.8],[7,8.9],[8,.8],[9,15],[10,1.7],[11,1.55],[12,1.45],[14,.7],[19,5],[20,8.25],[21,11.5],[22,9.1]])set('Исходные данные','B'+r,v);
+ for(let r=6;r<=10;r++)set('Эквивалентный брус','D'+r,1800);
+ for(let r=15;r<=19;r++)set('Эквивалентный брус','D'+r,1600);
+ for(let r=26;r<=31;r++)set('Эквивалентный брус','D'+r,1700);
+ set('Эквивалентный брус','D32',`=(${inp(6)}+${inp(13)}*${inp(11)}/(${inp(5)}/2)-${inp(10)})*1000-SUM(${[26,27,28,29,30,31].map(r=>eq('D',r)).join(',')})`);
+ put(w.worksheets.getItem('Балластные случаи'),'B5',`=0.6*${inp(7)}`);
+ put(w.worksheets.getItem('Расчёт листа A'),'D6','3 × 0.70');
+ // Make old fixed evaluation heights and spans follow the new geometry.
+ set('Нагрузки','B6',0);set('Нагрузки','B7','='+inp(10));set('Нагрузки','B8','='+inp(6));
+ for(const [lr,er] of [[9,12],[10,13],...[...Array(8)].map((_,i)=>[11+i,15+i]),...[...Array(7)].map((_,i)=>[19+i,26+i])])set('Нагрузки','B'+lr,'='+eq('F',er)+'/100');
+ for(let i=0;i<4;i++){
+  let lo=i===0?inp(10):inp(18+i),hi=i===3?inp(6):inp(19+i),hiIn=i===3?`(${inp(6)}+${inp(13)}*${inp(11)}/(${inp(5)}/2))`:hi;
+  set('Нагрузки','B'+(26+i),`=(${lo}+${hi})/2`);set('Нагрузки','B'+(30+i),`=(${lo}+${hiIn})/2`);
+  set('Балки','D'+(7+i),`=${hi}-${lo}`);set('Балки','D'+(11+i),`=${hiIn}-${lo}`);
+ }
+ for(const r of [5,6])set('Балки','D'+r,'='+inp(16));
+ for(let r=11;r<=20;r++)set('Листы','D'+r,`=MAX(${inp(19)}-${inp(10)},${inp(20)}-${inp(19)},${inp(21)}-${inp(20)},${inp(6)}-${inp(21)})`);
+ for(let r=24;r<=30;r++)set('Листы','D'+r,`=MAX(${inp(19)}-${inp(10)},${inp(20)}-${inp(19)},${inp(21)}-${inp(20)},${inp(6)}+${inp(13)}*${inp(11)}/(${inp(5)}/2)-${inp(21)})`);
+ for(let r=5;r<=10;r++)set('Листы','P'+r,'='+eq('F',r)+'/100');
+ for(const [r,a,b] of [[11,11,12],[12,13,14]])set('Листы','P'+r,`=(${eq('D',a)}*${eq('F',a)}+${eq('D',b)}*${eq('F',b)})/(${eq('D',a)}+${eq('D',b)})/100`);
+ for(let r=13;r<=20;r++)set('Листы','P'+r,'='+eq('F',r+2)+'/100');
+ for(const [r,e] of [[21,24],[22,23],[23,25],...[...Array(7)].map((_,i)=>[24+i,26+i])])set('Листы','P'+r,'='+eq('F',e)+'/100');
+ if(!cn){const g=sh('Изгиб корпуса').getRange('B41');g.formulas=[[g.formulas[0][0].replace('Учебная упругая проверка выполнена','Выполнено')]];}
+ // Integer manufacturing spacing: 700,700,11x650,700,700 mm.
+ set('Исходные данные','B18',.75);
+ put(sh('Исходные данные'),'A22',cn?'最大纵骨间距 a':'Максимальный шаг a');
+ put(w.worksheets.getItem(cn?'A板计算过程':'Расчёт листа A'),'D5','MAX(700;750)/1000');
+ set('Балки','C16',.55);
+ const intervals=[700,...Array(13).fill(750),700];
+ const cargo=intervals.slice(0,-1).map((_,i)=>intervals.slice(0,i+1).reduce((a,b)=>a+b,0));
+ const wing=[500,1050];
+ if(Math.abs(intervals.reduce((a,b)=>a+b,0)-(get('Исходные данные','B5')/2-get('Исходные данные','B11'))*1000)>1e-6)throw Error('Spacing closure');
+ // Bilge strakes: RS 2.2.4.3, at least the adjacent bottom/side requirement.
+ for(let r of [11,12]){
+  const old=sh('Листы').getRange(maps['Листы']['M'+r]).formulas[0][0];
+  set('Листы','M'+r,`=MAX(${old.slice(1)},${ref('Листы','M6')},${ref('Листы','M13')})`);
+ }
+ // Inner bottom, including the margin, must meet the bottom shell requirement.
+ for(let r of [21,22]){
+  const cell=sh('Листы').getRange(maps['Листы']['M'+r]);
+  const old=`=CEILING(MAX(${ref('Листы','K'+r)},${ref('Листы','L'+r)}),0.5)`;set('Листы','M'+r,`=MAX(${old.slice(1)},${[6,7,8,9,10,11].map(i=>ref('Листы','M'+i)).join(',')})`);
+ }
+ const hp=[];for(let r=4;r<=29;r++)hp.push({r,name:get('HP DIN1019','A'+r),h:get('HP DIN1019','B'+r),s:get('HP DIN1019','C'+r),b:get('HP DIN1019','D'+r),A:get('HP DIN1019','F'+r),mass:get('HP DIN1019','G'+r),y:get('HP DIN1019','H'+r),I:get('HP DIN1019','I'+r)});
+ function props(p,b,t){let A=b*t,e=p.A*(p.y+t/2)/(p.A+A),I=p.I+b*t**3/12+p.A*(p.y+t/2)**2-(p.A+A)*e**2;return Math.min(I/(p.h/10+t/2-e),I/(e+t/2));}
+ const beams=[];
+ for(let r=5;r<=16;r++){
+  const req=get('Балки','M'+r),b=get('Балки','P'+r)*100,t=get('Балки','O'+r)/10,min=get('Балки','N'+r);
+  let p=hp.filter(p=>p.s>=min&&props(p,b,t)>=req).sort((a,b)=>a.mass-b.mass)[0];if(!p)throw Error(`No HP fits ${r}: W=${req}`);
+  set('Балки','Q'+r,p.name);
+  for(const [c,hc,div] of [['C','B',10],['D','C',10],['E','F',1],['F','H',1],['G','I',1]])set('Сечения',c+(r-1),`=${ref('HP DIN1019',hc+p.r)}/${div}`);
+  beams.push({code:get('Балки','A'+r),profile:p.name,required:req,W:props(p,b,t),span:get('Балки','D'+r),smin:min,b,t});
+ }
+ for(let r=35;r<=52;r++){
+  let br=r===35?5:r===36?6:r<=38?16:15,p=hp.find(p=>p.name===get('Балки','Q'+br));
+  set('Эквивалентный брус','D'+r,'='+ref('Балки','Q'+br));
+  for(const [c,hc] of [['E','C'],['G','F'],['H','I']])set('Эквивалентный брус',c+r,'='+ref('HP DIN1019',hc+p.r));
+  let z=r===35?ref('HP DIN1019','H'+p.r):r===36?`${inp(10)}*100-${ref('HP DIN1019','H'+p.r)}`:r<=38?`(${inp(6)}+${inp(13)}*(${r===37?`(${inp(11)}-${ref('Балки','C16')})/2`:`(${inp(11)}+${ref('Балки','C16')})/2`})/(${inp(5)}/2))*100-${ref('HP DIN1019','H'+p.r)}`:`(${inp(6)}+${inp(13)}*(${inp(11)}+(${inp(18)}*${r-38}-0.05*1))/(${inp(5)}/2))*100-${ref('HP DIN1019','H'+p.r)}`;
+  set('Эквивалентный брус','F'+r,'='+z);
+ }
+ const extra=w.worksheets.getItem(cn?'补充纵向构件':'Дополнительные связи');
+ const cl=[];
+ for(let r=37;r<=40;r++){
+  const need=extra.getRange('D'+r).values[0][0],b=Math.min(extra.getRange('B'+r).values[0][0]/6,get('Исходные данные','B14'))*100,t=extra.getRange('B13').values[0][0]/10;
+  const p=hp.filter(p=>p.s>=6.7+.02*get('Исходные данные','B4')&&props(p,b,t)>=need).sort((a,b)=>a.mass-b.mass)[0];if(!p)throw Error('No CL HP');
+  put(extra,'E'+r,p.name);let rr=r+11,h=c=>ref('HP DIN1019',c+p.r);
+  put(extra,'D'+rr,`=${h('F')}*(${h('H')}+$B$13/20)/(${h('F')}+C${rr})`);
+  put(extra,'E'+rr,`=${h('I')}+B${rr}*($B$13/10)^3/12+${h('F')}*(${h('H')}+$B$13/20)^2-(${h('F')}+C${rr})*D${rr}^2`);
+  put(extra,'F'+rr,`=MIN(E${rr}/(${h('B')}/10+$B$13/20-D${rr}),E${rr}/(D${rr}+$B$13/20))`);
+  cl.push({code:'CL-F'+(r-36),profile:p.name,required:need,W:props(p,b,t),span:extra.getRange('B'+r).values[0][0]});
+ }
+
+ const eqs=sh('Эквивалентный брус'),bend=sh('Изгиб корпуса');
+ for(let r=5;r<=52;r++)set('Эквивалентный брус','C'+r,get('Эквивалентный брус','C'+r)/2);
+ put(extra,'B22',.5);for(let r=23;r<=25;r++)put(extra,'B'+r,1);
+ put(eqs,'A1','Эквивалентный брус — половина сечения');
+ put(eqs,'A2','IS — внутренний борт; CL — переборка в ДП (n = 0,5).\nA, S, I₀ полного сечения = 2 × суммы по половине сечения.');
+ put(eqs,'A3',null);eqs.getRange('A2:F3').format.wrapText=true;
+ eqs.getRange('C12:C59').setNumberFormat('0.0');extra.getRange('B22:B25').setNumberFormat('0.0');
+ for(const a of ['C174','C175','C176']){const f=eqs.getRange(a).formulas[0][0];put(eqs,a,`=2*(${f.slice(1)})`);}
+ put(eqs,'F174','2 × Σ Ai');put(eqs,'F175','2 × Σ Ai·zi');put(eqs,'F176','2 × Σ (ii+Ai·zi²)');
+ put(bend,'B32',`='Эквивалентный брус'!C174`);
+ put(bend,'B33',`='Эквивалентный брус'!C178`);
+ put(bend,'B34',`='Эквивалентный брус'!C179`);
+ // Show the previously omitted longitudinal plates in the equivalent-girder sheet itself.
+ eqs.getRange('A194:F208').format.font.size=14;
+ eqs.getRange('A194:F208').format.rowHeight=34;
+ eqs.getRange('A194:F208').format.wrapText=true;
+ put(eqs,'A194','6. Переборка в ДП и платформы — половина сечения');
+ eqs.getRange('A196:F196').values=[['Элемент','n','h / b, см','s, см','z, см','nA, см²']];
+ for(let i=0;i<4;i++)for(const col of ['A','B','C','D','E','F'])put(eqs,col+(197+i),`='Дополнительные связи'!${col}${22+i}`);
+ eqs.getRange('A203:E203').values=[['Элемент','S, см³','Az², см⁴','i, см⁴','']];
+ for(let i=0;i<4;i++)for(const col of ['A','B','C','D'])put(eqs,col+(204+i),`='Дополнительные связи'!${col}${29+i}`);
+ for(const rr of [196,203]){eqs.getRange(`A${rr}:F${rr}`).format.fill='#E7EDF3';eqs.getRange(`A${rr}:F${rr}`).format.font.bold=true;}
+ eqs.getRange('B197:B200').setNumberFormat('0.0');eqs.getRange('C197:F200').setNumberFormat('#,##0.000');eqs.getRange('B204:D207').setNumberFormat('#,##0.000');
+ const front=w.worksheets.getItem(cn?'目录与状态':'Содержание');put(front,'A1',cn?'Пример：油船结构计算':'Пример: расчёт конструкций танкера');
+ // Check and export full evaluated records, including previously split tables.
+ const records={};for(const s of Object.keys(maps)){if(s==='Основания')continue;records[s]={};for(const [a,p] of Object.entries(maps[s]))records[s][a]=sh(s).getRange(p).values[0][0];}
+ records.extra={};for(const a of ['B13','B15','B16','B17','B5','B6',...Array.from({length:4},(_,i)=>'F'+(37+i))])records.extra[a]=extra.getRange(a).values[0][0];
+ const cases=w.worksheets.getItem(cn?'压载工况':'Балластные случаи');records.cases=cases.getRange('A1:F195').values;
+ for(let r=5;r<=34;r++)if(!(get('Эквивалентный брус','D'+r)>0))throw Error('Invalid plate width '+r);
+ if(get('Исходные данные','B10')<get('Исходные данные','B38'))throw Error('Double bottom too low');
+ if(get('Исходные данные','B11')<get('Исходные данные','B42'))throw Error('Double side too narrow');
+ for(let r of [33,34,35])if(get('Изгиб корпуса','B'+r)<1)throw Error('Global strength ratio fails '+r);
+ records.halfSection={CL:extra.getRange('B22').values[0][0],A:eqs.getRange('C174').values[0][0],S:eqs.getRange('C175').values[0][0],I0:eqs.getRange('C176').values[0][0]};
+ reports[lang]={records,hp,beams,cl,layout:{intervals,cargo,wing}};
+ console.log(lang,JSON.stringify({sA:get('Листы','N6'),ballast:cases.getRange('B5').values[0][0],global:[29,30,31,32,33,34,35].map(r=>get('Изгиб корпуса','B'+r)),beams,cl}));
+ console.log((await w.inspect({kind:'match',searchTerm:'#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A|#NUM!',options:{useRegex:true,maxResults:20},maxChars:1500})).ndjson);
+ await(await SpreadsheetFile.exportXlsx(w)).save(`${out}/Пример_расчёты.xlsx`);
+ const ranges=[['Содержание','A1:D18'],['Расчёт листа A','A5:D19'],['Исходные данные','A7:D25'],['Нагрузки','A80:F96'],['Листы','A73:F91'],['Флоры и киль','A18:D21'],['HP DIN1019','A8:F15'],['Балки','A61:C74'],['Сечения','A44:F56'],['Изгиб корпуса','A32:D43'],['Эквивалентный брус','A171:F190'],['Эквивалентный брус','A194:F208'],['Эквивалентный брус','A1:F18']];
+ for(let i=0;i<ranges.length;i++){const [s,range]=ranges[i];let sheet=cn?(s==='Содержание'?'目录与状态':s==='Расчёт листа A'?'A板计算过程':name(s)):s;let blob=await w.render({sheetName:sheet,range,scale:1,format:'png'});await fs.writeFile(`${work}/${lang}_${i}.png`,new Uint8Array(await blob.arrayBuffer()));}
+ for(const [sheet,range,tag] of [[cases,'A108:F115','cases'],[extra,'A35:F40','cl']]){let b=await w.render({sheetName:sheet.name,range,scale:1,format:'png'});await fs.writeFile(`${work}/${lang}_${tag}.png`,new Uint8Array(await b.arrayBuffer()));}
+}
+await fs.writeFile(`${work}/results.json`,JSON.stringify(reports,null,2));

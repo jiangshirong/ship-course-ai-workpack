@@ -1,0 +1,84 @@
+from pathlib import Path
+import json,math
+import numpy as np
+import openpyxl
+r=Path.cwd();work=r/'work/nastya_revision';out=r/'outputs/Пример_修正';j=json.loads((work/'results.json').read_text(encoding='utf8'))
+v=j['ru']['records'];hp=j['ru']['hp'];iv=lambda row:v['Исходные данные']['B'+str(row)];get=lambda s,a:v[s][a]
+def close(a,b):assert math.isclose(a,b,rel_tol=2e-8,abs_tol=1e-6),(a,b)
+for s,vals in v.items():
+ if s in ['extra','cases']:continue
+ for a,x in vals.items():
+  y=j['cn']['records'][s][a]
+  if isinstance(x,(int,float)):close(x,y)
+for lang in ['RU','CN']:
+ w=openpyxl.load_workbook(out/f'Пример_calculations_{lang}.xlsx',data_only=True)
+ for s in w:
+  for row in s:
+   for c in row:
+    assert c.data_type!='e',(s.title,c.coordinate,c.value)
+    assert 'Пример' not in str(c.value) and 'Пример' not in str(c.value),(s.title,c.coordinate,c.value)
+ assert w[w.sheetnames[0]]['B5'].value==132
+assert [iv(i) for i in range(4,10)]==[132,23.9,14.1,8.5,.8,15]
+assert all(x%50==0 for x in j['ru']['layout']['intervals'])
+assert sum(j['ru']['layout']['intervals'])==(iv(5)/2-iv(11))*1000
+for rr in [21,22]:assert get('Листы','N'+str(rr))>=max(get('Листы','M'+str(k)) for k in range(6,12))
+cw=get('Нагрузки','B2');pw0=get('Нагрузки','D2');az=get('Нагрузки','F2');theta=get('Нагрузки','H2');psi=get('Нагрузки','J2');rho=iv(24);g=iv(34);dbal=2+.02*iv(4)
+def liquid(z,top,b):
+ h=max(top-z,0)
+ return max(rho*(g+az)*h,rho*g*(h+b*theta),rho*g*(h+iv(22)*psi),.75*rho*g*(h+iv(25)),rho*g*h+iv(26))
+def wave(z,d):return max(0,pw0-1.5*cw*(d-z)/d if z<=d else pw0-7.5*iv(32)*(z-d))
+def pressures(z):
+ pb=liquid(z,iv(6)+iv(13)*iv(11)/(iv(5)/2),iv(5)/2);pc=liquid(z,iv(6)+iv(13),iv(5)/2-iv(11))
+ pst=10*max(dbal-z,0);pw=wave(z,dbal);net=pb-max(pst-pw,0)
+ sea=10*max(iv(7)-z,0)+max(wave(z,iv(7)),.03*iv(4)+5 if z>iv(7) else 0)
+ return max(net,sea,abs(pb-pst-pw)),max(pb,pc)
+c=v['cases']
+for row in range(6,34):
+ rr=21+(row-6)*3;lo,hi=c[rr-1][1],c[rr][1]
+ sampled=[pressures(float(z)) for z in list(np.linspace(lo,hi,2001))+[c[rr+1][1]]]
+ close(get('Нагрузки','M'+str(row)),max(x[0] for x in sampled));close(get('Нагрузки','L'+str(row)),max(x[1] for x in sampled))
+def W(p,b,t):
+ area=p['A']+b*t;e=p['A']*(p['y']+t/2)/area;I=p['I']+b*t**3/12+p['A']*(p['y']+t/2)**2-area*e**2
+ return min(I/(p['h']/10+t/2-e),I/(e+t/2))
+for b in j['ru']['beams']:
+ p=next(p for p in hp if p['name']==b['profile']);close(W(p,b['b'],b['t']),b['W']);assert b['W']>=b['required'] and p['s']>=b['smin']
+ assert not any(q['mass']<p['mass'] and q['s']>=b['smin'] and W(q,b['b'],b['t'])>=b['required'] for q in hp)
+for b in j['ru']['cl']:
+ p=next(p for p in hp if p['name']==b['profile']);close(W(p,min(b['span']/6,iv(14))*100,v['extra']['B13']/10),b['W']);assert b['W']>=b['required']
+# Integrate the actual plate strips and selected profiles independently of sum rows.
+A=S=Q=0
+def strip(length,t,zfunc,n=2,nzfunc=lambda u:0):
+ global A,S,Q
+ N=max(1000,math.ceil(length*3));u=(np.arange(N)+.5)/N;z=zfunc(u);nz=nzfunc(u);da=length/N*t*n
+ A+=length*t*n;S+=float(np.sum(z))*da;Q+=float(np.sum(z*z+(t*nz)**2/12))*da
+R=iv(12)*1000;half=iv(5)*500;flat=half-R;arc=R*math.pi/2;DB=iv(10)*1000;H=iv(6)*1000;cam=iv(13)*1000;side=iv(11)*1000
+plates={get('Листы','A'+str(i)):get('Листы','N'+str(i)) for i in range(5,31)}
+lengths=[iv(45)*500]+[get('Эквивалентный брус','D'+str(i)) for i in range(6,11)]+[2000]*2+[get('Эквивалентный брус','D'+str(i)) for i in range(15,22)]+[iv(45)*1000];tags=['KL']+list('ABCDEFGHIJKLMN')+['SH'];start=0
+for tag,L in zip(tags,lengths):
+ t=plates[tag];breaks=sorted(set([start,start+L]+[p for p in [flat,flat+arc] if start<p<start+L]))
+ for a,b in zip(breaks,breaks[1:]):
+  if b<=flat+1e-6:strip(b-a,t,lambda u:0*u,nzfunc=lambda u:np.ones_like(u))
+  elif a>=flat+arc-1e-6:strip(b-a,t,lambda u,a=a,b=b:R+a-flat-arc+u*(b-a))
+  else:strip(b-a,t,lambda u,a=a,b=b:R*(1-np.cos((a-flat+u*(b-a))/R)),nzfunc=lambda u,a=a,b=b:np.cos((a-flat+u*(b-a))/R))
+ start+=L
+close(start,flat+arc+H-R)
+for L,tag in [(side,'IM'),(half-side,'IB')]:strip(L,plates[tag],lambda u:np.full_like(u,DB),nzfunc=lambda u:np.ones_like(u))
+strip(math.hypot(half,cam),plates['DK'],lambda u:H+cam*u,nzfunc=lambda u:np.full_like(u,half/math.hypot(half,cam)))
+z0=DB
+for i,tag in enumerate(['ISG','ISF','ISE','ISD','ISC','ISB','ISA']):
+ L=get('Эквивалентный брус','D'+str(26+i));strip(L,plates[tag],lambda u,L=L,z0=z0:z0+u*L);z0+=L
+for n,col in [(1,'H5'),(2,'H6')]:strip(DB,get('Флоры и киль',col),lambda u:DB*u,n=n)
+def profile(name,n,z):
+ global A,S,Q
+ p=next(p for p in hp if p['name']==name);aa=p['A']*100;ii=p['I']*10000;A+=n*aa;S+=n*aa*z;Q+=n*(ii+aa*z*z)
+for row,zbase,sg in [(5,0,1),(6,DB,-1)]:
+ name=get('Балки','Q'+str(row));p=next(p for p in hp if p['name']==name);profile(name,28,zbase+sg*p['y']*10)
+for x in j['ru']['layout']['wing']+[side+x for x in j['ru']['layout']['cargo']]:
+ name=get('Балки','Q'+str(16 if x<side else 15));p=next(p for p in hp if p['name']==name);profile(name,2,H+cam*x/half-p['y']*10)
+strip(H+cam-DB,v['extra']['B13'],lambda u:DB+(H+cam-DB)*u,n=1)
+for z in [iv(i)*1000 for i in [19,20,21]]:strip(v['extra']['B17']*1000,v['extra']['B15'],lambda u,z=z:np.full_like(u,z),nzfunc=lambda u:np.ones_like(u))
+e=S/A;I=Q-S*S/A
+ind={'28':A/100,'29':e/10,'30':I/10000,'31':I/e/1000,'32':I/(H+cam-e)/1000}
+for row,value in ind.items():close(value,get('Изгиб корпуса','B'+row))
+report={'RU_CN_agree':True,'formula_errors':0,'pressure_points':28*2001,'HP_checked':16,'independent_geometry_integration':ind,'A_net_plus_corrosion':15.8*iv(18)*math.sqrt(pressures(0)[0]/(.6*iv(31)))+.2*(iv(27)-iv(28))}
+(work/'verified.json').write_text(json.dumps(report,indent=2),encoding='utf8');print(json.dumps(report,indent=2))

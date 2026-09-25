@@ -1,0 +1,111 @@
+{
+  "notice": "Independently calculated arithmetic fixtures; not official SMTU exam answers or rule applicability certification.",
+  "cases": [
+    {
+      "id": "geometry",
+      "kind": "synthetic arithmetic",
+      "description": "B=27,D=15.5,R=1.55,b=2,hdd=2,f=.54; metres",
+      "cells": {
+        "A1": 27,
+        "A2": 15.5,
+        "A3": 1.55,
+        "A4": 2,
+        "A5": 2,
+        "A6": 0.54,
+        "B1": "=A1/2-A3",
+        "B2": "=PI()*A3/2",
+        "B3": "=A2-A3",
+        "B4": "=A2+A6*A4/(A1/2)-A5"
+      },
+      "expected": {
+        "B1": 11.95,
+        "B2": 2.4347343065320897,
+        "B3": 13.95,
+        "B4": 13.58
+      }
+    },
+    {
+      "id": "plate",
+      "kind": "synthetic course-form arithmetic, not authenticated exam question 11",
+      "description": "a=.75m,p=85kPa,k=1,ksigma=.6,sigman=235MPa,corrosion=2.6mm; round upward to whole mm",
+      "cells": {
+        "A1": 0.75,
+        "A2": 85,
+        "A3": 1,
+        "A4": 0.6,
+        "A5": 235,
+        "A6": 2.6,
+        "B1": "=15.8*A1*A3*SQRT(A2/(A4*A5))+A6",
+        "B2": "=CEILING(B1,1)"
+      },
+      "expected": {
+        "B1": 11.800644635139848,
+        "B2": 12
+      }
+    },
+    {
+      "id": "required_W",
+      "kind": "synthetic course-form arithmetic",
+      "description": "p=80kPa,a=.75m,l=3m,m=12,ksigma=.75,sigman=235MPa,omega=1.2",
+      "cells": {
+        "A1": 80,
+        "A2": 0.75,
+        "A3": 3,
+        "A4": 12,
+        "A5": 0.75,
+        "A6": 235,
+        "A7": 1.2,
+        "B1": "=1000*A1*A2*A3^2/(A4*A5*A6)",
+        "B2": "=B1*A7"
+      },
+      "expected": {
+        "B1": 255.31914893617022,
+        "B2": 306.3829787234043
+      }
+    },
+    {
+      "id": "combined_rectangles",
+      "kind": "exact rectangle integration; not an HP profile",
+      "description": "plate width10cm thickness1cm centred at0; vertical rectangle width1cm height10cm centroid5.5cm",
+      "cells": {
+        "A1": 10,
+        "A2": 10,
+        "A3": 5.5,
+        "B1": "=(A2*A3)/(A1+A2)",
+        "B2": "=10/12+1000/12+A2*(A3-B1)^2+A1*B1^2",
+        "B3": "=MIN(B2/(B1+0.5),B2/(10.5-B1))"
+      },
+      "expected": {
+        "B1": 2.75,
+        "B2": 235.41666666666666,
+        "B3": 30.376344086021504
+      }
+    },
+    {
+      "id": "equivalent_section",
+      "kind": "two 10cm by 10cm rectangles with centres z=0cm and z=100cm",
+      "description": "each A=100cm2,Iown=2500/3cm4; extreme fibres -5cm and105cm",
+      "cells": {
+        "A1": 100,
+        "A2": 100,
+        "A3": 0,
+        "A4": 100,
+        "A5": "=2500/3",
+        "A6": -5,
+        "A7": 105,
+        "B1": "=A1+A2",
+        "B2": "=(A1*A3+A2*A4)/B1",
+        "B3": "=2*A5+A1*(A3-B2)^2+A2*(A4-B2)^2",
+        "B4": "=B3/(B2-A6)",
+        "B5": "=B3/(A7-B2)"
+      },
+      "expected": {
+        "B1": 200,
+        "B2": 50,
+        "B3": 501666.6666666667,
+        "B4": 9121.212121212122,
+        "B5": 9121.212121212122
+      }
+    }
+  ]
+}

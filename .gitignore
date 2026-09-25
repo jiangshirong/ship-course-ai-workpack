@@ -1,0 +1,30 @@
+local_reference/
+inputs/*
+!inputs/.gitkeep
+!inputs/README.md
+outputs/*
+!outputs/.gitkeep
+work/*
+!work/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*.dwl
+*.dwl2
+*.bak
+*.tmp
+~$*
+.env
+.env.*
+# Historical material retained locally after cleanup was blocked; never publish.
+/01_教师CAD示例/
+/02_课堂计算示例/
+/03_型材标准/
+/04_时间线与任务说明/
+/9.23 考试/
+/9.24 考试/
+/李申林的作业/
+/张冰的作业/
+/最终提交/
+/Варианты_ГДОУ_4_курс_2026осень.xlsx

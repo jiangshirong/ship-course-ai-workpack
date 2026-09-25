@@ -1,0 +1,61 @@
+import fs from 'node:fs/promises';
+import {Workbook,SpreadsheetFile} from '@oai/artifact-tool';
+const M=JSON.parse(await fs.readFile('work/pecheneg_long/model.json','utf8'));
+const out='outputs/Пример_C型修订',work='work/pecheneg_long';
+await fs.mkdir(out,{recursive:true});
+const reports={};
+for(const lang of ['ru']){
+ const li=lang==='ru'?0:1,w=Workbook.create(),loc={},plans=[];
+ function plan(s){return {s,name:s[lang],rows:[],merges:[],bands:[],widths:[470,205,90],last:0};}
+ function val(p,k,address){loc[k]={sheet:p.name,address};p.rows.push({address,key:k});p.last=Math.max(p.last,Number(address.match(/\d+/)[0]));}
+ function txt(p,address,text){p.rows.push({address,text});p.last=Math.max(p.last,Number(address.match(/\d+/)[0]));}
+ for(const s of M.sheets){
+  w.worksheets.add(s[lang]);const p=plan(s);plans.push(p);
+  if(s.id==='catalog'){
+   p.widths=[175,105,105,115,135,135];txt(p,'A1',li?'HP 型材几何及截面特性':'Геометрия и характеристики HP');p.merges.push('A1:F1');p.bands.push(3);
+   [li?'型材':'Профиль','h, mm','s, mm','b, mm','A, cm²','kg/m'].forEach((x,i)=>txt(p,String.fromCharCode(65+i)+'3',x));
+   for(let i=0;i<M.hp.length;i++){let r=i+4;txt(p,'A'+r,M.hp[i].name);['h','s','b','A','mass'].forEach((k,j)=>val(p,'hp'+i+k,String.fromCharCode(66+j)+r));}
+   const r0=M.hp.length+7;p.bands.push(r0);['HP','y, cm','I, cm⁴'].forEach((x,i)=>txt(p,String.fromCharCode(65+i)+r0,x));
+   for(let i=0;i<M.hp.length;i++){let r=r0+i+1;txt(p,'A'+r,M.hp[i].name);val(p,'hp'+i+'y','B'+r);val(p,'hp'+i+'I','C'+r);}
+  }else if(s.id==='eq'){
+   p.widths=[245,100,150,145,165,140];txt(p,'A1',s[lang]);p.merges.push('A1:F1');
+   let r=3;for(const k of ['Area','Static','NA','Inertia','WB','WD','WBratio','WDratio','Inertiaratio','sigmaD','sigmaB']){txt(p,'A'+r,M.cells[k].labels[li]);p.merges.push(`A${r}:C${r}`);val(p,k,'D'+r);txt(p,'E'+r,M.cells[k].unit);r++;}
+   r+=2;p.bands.push(r);[li?'构件':'Элемент','n','Ai, cm²','z, cm','I₀, cm⁴'].forEach((x,i)=>txt(p,String.fromCharCode(65+i)+r,x));r++;
+   for(const q of M.eq){txt(p,'A'+r,q.code+' '+q[lang]);for(const [suf,col] of [['n','B'],['area','C'],['z','D'],['i0','E']])val(p,q.code+suf,col+r);r++;}
+   r+=2;p.bands.push(r);[li?'构件':'Элемент','nAi, cm²','nAizi, cm³','IОП, cm⁴'].forEach((x,i)=>txt(p,String.fromCharCode(65+i)+r,x));r++;
+   for(const q of M.eq){txt(p,'A'+r,q.code);[['A','B'],['S','C'],['Q','D']].forEach(([suf,col])=>val(p,q.code+suf,col+r));r++;}
+   r+=2;p.bands.push(r);['DK','x0, m','x1, m','z0, m','z1, m','l, m'].forEach((x,i)=>txt(p,String.fromCharCode(65+i)+r,x));r++;
+   for(let i=1;i<=14;i++){txt(p,'A'+r,'DK'+i);['x0','x1','z0','z1','len'].forEach((k,j)=>val(p,'ED'+i+k,String.fromCharCode(66+j)+r));r++;}
+   for(const k of ['Inertia0']){txt(p,'A'+r,M.cells[k].labels[li]);p.merges.push(`A${r}:C${r}`);val(p,k,'D'+r);txt(p,'E'+r,M.cells[k].unit);r++;}
+  }else{
+   txt(p,'A1',s[lang]);p.merges.push('A1:C1');let r=3;
+   for(const row of s.rows){if(row.band){txt(p,'A'+r,row.band[li]);p.merges.push(`A${r}:C${r}`);p.bands.push(r);r++;continue;}txt(p,'A'+r,row.labels[li]);val(p,row.key,'B'+r);txt(p,'C'+r,row.unit);r++;}
+  }
+ }
+ // All cells are located before any formula is written.
+ for(const p of plans){
+  const sh=w.worksheets.getItem(p.name),end=String.fromCharCode(64+p.widths.length);sh.showGridLines=false;
+  const range=sh.getRange(`A1:${end}${p.last}`);range.format.font={name:li?'Microsoft YaHei':'Arial',size:14,color:'#202124'};range.format.rowHeight=34;range.format.verticalAlignment='center';range.format.wrapText=true;
+  p.widths.forEach((v,i)=>sh.getRange(`${String.fromCharCode(65+i)}:${String.fromCharCode(65+i)}`).format.columnWidthPx=v);
+  p.merges.forEach(r=>sh.getRange(r).merge());
+  for(const item of p.rows){const cell=sh.getRange(item.address),r=Number(item.address.match(/\d+/)[0]);
+   if(item.key){let row=M.cells[item.key],x=row.x;if(item.key==='type')x=li?'干货船':'Сухогруз';if(li&&['scheme','sidescheme'].includes(item.key))x=item.key==='scheme'?'纵骨架':'横骨架';if(typeof x==='string'&&x.startsWith('='))cell.formulas=[[x.replace(/\{([^}]+)\}/g,(_,k)=>{if(!loc[k])throw Error(k);return `'${loc[k].sheet}'!${loc[k].address}`;})]];else {cell.values=[[x]];if(typeof x==='number')cell.format.font.color='#215A96';}
+    if(typeof row.v==='number')cell.setNumberFormat(Math.abs(row.v)>=1e6?'0.000E+00':Number.isInteger(row.v)?'0':'0.000');
+    if(typeof row.v==='string'&&row.v.length>23){cell.format.rowHeight=58;}
+   }else {cell.values=[[item.text]];const len=[...String(item.text)].reduce((a,c)=>a+(/[\u3400-\u9fff]/.test(c)?14:7.4),0);let width=p.widths[item.address.charCodeAt(0)-65];if(p.merges.some(m=>m.startsWith(item.address+':')))width=p.widths.reduce((a,b)=>a+b,0);if(len>width-15)sh.getRange(`A${r}:${end}${r}`).format.rowHeight=Math.ceil(len/(width-15))*21+10;}
+  }
+  for(const r of p.bands){const rr=sh.getRange(`A${r}:${end}${r}`);rr.format.fill='#E7EDF2';rr.format.font.bold=true;rr.format.rowHeight=42;}
+  sh.getRange(`A1:${end}1`).format.font.size=19;sh.getRange(`A1:${end}1`).format.font.bold=true;sh.getRange(`A1:${end}1`).format.rowHeight=46;sh.freezePanes.freezeRows(1);
+ }
+ // Front page and equivalent-beam outputs must be easy to find.
+ for(const k of ['sumNA','sumInertia','sumWB','sumWD','sumWBratio','sumWDratio','sumInertiaratio']){const p=loc[k];w.worksheets.getItem(p.sheet).getRange(p.address).format.font.bold=true;}
+ const results={},errors=[];
+ for(const [k,p] of Object.entries(loc)){const val=w.worksheets.getItem(p.sheet).getRange(p.address).values[0][0];results[k]=val;const expected=M.values[k];if(typeof expected==='number'&&(!(typeof val==='number')||Math.abs(val-expected)>1e-7*Math.max(1,Math.abs(expected))))errors.push([k,expected,val]);}
+ if(errors.length)throw Error(JSON.stringify(errors.slice(0,15)));
+ console.log(lang,JSON.stringify({keys:Object.keys(loc).length,WD:results.WD,Wreq:results.Wreq,NA:results.NA}));
+ console.log((await w.inspect({kind:'match',searchTerm:'#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A|#NUM!',options:{useRegex:true,maxResults:10},maxChars:1200})).ndjson);
+ await(await SpreadsheetFile.exportXlsx(w)).save(`${out}/Пример_calculations.xlsx`);
+ for(const p of plans){let end=String.fromCharCode(64+p.widths.length),n=p.s.id==='summary'?16:Math.min(20,p.last);const blob=await w.render({sheetName:p.name,range:`A1:${end}${n}`,scale:1,format:'png'});await fs.writeFile(`${work}/${lang}_${p.s.id}.png`,new Uint8Array(await blob.arrayBuffer()));}
+ reports[lang]={results,loc};
+}
+await fs.writeFile(`${work}/workbook_verification.json`,JSON.stringify(reports,null,2));

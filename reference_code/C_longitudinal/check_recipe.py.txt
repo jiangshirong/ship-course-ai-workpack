@@ -1,0 +1,83 @@
+from pathlib import Path
+import json,math,openpyxl,numpy as np
+P=Path.cwd();W=P/'work/pecheneg_long';O=P/'outputs/Пример_C型修订';M=json.loads((W/'model.json').read_text(encoding='utf8'));v=M['values'];report={}
+book=json.loads((W/'workbook_verification.json').read_text(encoding='utf8'))
+def close(a,b,tol=1e-7):assert abs(a-b)<=tol*max(1,abs(a),abs(b)),(a,b)
+for lang in ['ru']:
+ wb=openpyxl.load_workbook(O/'Пример_calculations.xlsx',data_only=True)
+ ff=openpyxl.load_workbook(O/'Пример_calculations.xlsx',data_only=False)
+ assert all(c.data_type!='e' for s in wb for row in s for c in row)
+ for key,loc in book[lang]['loc'].items():
+  z=wb[loc['sheet']][loc['address']].value
+  if isinstance(v[key],(float,int)):close(z,v[key])
+  if str(M['cells'][key]['x']).startswith('='):assert ff[loc['sheet']][loc['address']].data_type=='f'
+ report[lang]={'sheets':len(wb.sheetnames),'verified_cells':len(book[lang]['loc'])}
+assert [v[x] for x in ['L','B','D','d','Cb','v']]==[109,17.8,9.3,6.8,.7,15]
+assert v['scheme']=='Продольный' and v['sidescheme']=='Поперечный'
+cw=10.75-((300-109)/100)**1.5;pw0=3*cw;az=9.81*.9/109**.333
+def water(z,d):return 10*max(d-z,0),max(0,pw0-1.5*cw*(d-z)/d if z<=d else pw0-7.5*.267*(z-d))
+def ballast(z):
+ h=max(1.2-z,0);rho=1.025;g=9.81;theta=.6/(1+.005*109);psi=.23/(1+.01*109);air=9.3-1.2+.76
+ return max(rho*(g+az)*h,rho*g*(h+17.8/2*theta),rho*g*(h+18*psi),.75*rho*g*(h+air),rho*g*h+25)
+st,wave=water(0,.6*6.8);net=max(ballast(0)-max(st-wave,0),abs(ballast(0)-st-wave))
+close(net,v['PNET']);close(max(sum(water(0,6.8)),net),v['PBottom']);close(max(ballast(1.2),.6*(9.81+az)*4.5),v['PIB'])
+for code,p in M['plates'].items():
+ pre=code+'_';a=v[pre+'a'];b=v[pre+'b'];pressure=v[pre+'p'];k=min(1.2-.5*a/b,1)
+ req=max(15.8*a*k*math.sqrt(pressure/(v[pre+'ks']*235))+v[pre+'u']*13,v[pre+'min'])
+ close(req,v[pre+'req']);assert v[pre+'s']>=req
+def hpW(p,b,t):
+ A=p['A']+b*t;z=p['A']*(p['y']+t/2)/A
+ I=p['I']+p['A']*(p['y']+t/2-z)**2+b*t**3/12+b*t*z*z
+ return min(I/(p['h']/10+t/2-z),I/(z+t/2))
+for code,b in M['beams'].items():
+ p=b['hp'];required=1000*v[code+'p']*v[code+'a']*v[code+'l']**2/(v[code+'m']*v[code+'ks']*235)
+ alpha=min(.07+6/required,.25) if required<200 else (.01+1/required)/.15
+ required*=1+alpha*v[code+'u']*13
+ close(required,b['Wreq']);actual=hpW(p,v[code+'b'],v[code+'t']);close(actual,b['W']);assert actual>=required
+ assert not any(q['mass']<p['mass'] and q['s']>=v[code+'smin'] and hpW(q,v[code+'b'],v[code+'t'])>=required for q in M['hp'])
+for code in ['KD','KL','KF']:assert v[code+'leg']>=v[code+'req']
+for code,girder in M['girders'].items():
+ h,sw,b,tf=[girder[k]/10 for k in ['h','sw','b','tf']];nw=girder['nweb'];eff=v[code+'eff'];t=v[code+'t']
+ parts=[(nw*h*sw,h/2,nw*h**3*sw/12),(b*tf,h+tf/2,b*tf**3/12),(eff*t,-t/2,eff*t**3/12)]
+ area=sum(q[0] for q in parts);centroid=sum(q[0]*q[1] for q in parts)/area
+ inertia=sum(q[2]+q[0]*(q[1]-centroid)**2 for q in parts)
+ actual=inertia/max(centroid+t,h+tf-centroid)
+ close(actual,v[code+'W']);assert actual>=v[code+'Wreq']
+# Independent numerical integration of the complete longitudinal cross-section in SI units.
+A=S=Q=0
+def strip(length,t,zfun,n=1,nz=0):
+ global A,S,Q
+ u=(np.arange(12000)+.5)/12000;z=np.asarray(zfun(u));z=z+u*0;normal=nz(u) if callable(nz) else nz
+ da=length*t*n;A+=da;S+=da*float(z.mean());Q+=da*float(np.mean(z*z+(t*np.asarray(normal))**2/12))
+strip(v['keelwidth'],v['K_s']/1000,lambda u:0,nz=1)
+strip(8.9-1.6-v['keelwidth']/2,v['A_s']/1000,lambda u:0,2,1)
+strip(1.6*math.pi/2,v['A_s']/1000,lambda u:1.6*(1-np.cos(u*math.pi/2)),2,lambda u:np.cos(u*math.pi/2))
+for code,lo,hi in [('E',1.6,3.6),('F',3.6,5.6),('G',5.6,9.3-v['keelwidth']),('H',9.3-v['keelwidth'],9.3)]:strip(hi-lo,v[code+'_s']/1000,lambda u,lo=lo,hi=hi:lo+u*(hi-lo),2)
+strip(v['ibedge']-1,v['IB_s']/1000,lambda u:1.2,2,1);strip(1,v['IM_s']/1000,lambda u:1.2,2,1)
+strip(1.2,v['vk_s']/1000,lambda u:1.2*u);strip(1.2,v['sg_s']/1000,lambda u:1.2*u,2)
+strip(4.9,v['LD_s']/1000,lambda u:5.7,2,1)
+for x0,z0,x1,z1 in M['decksegments']:
+ length=math.hypot(x1-x0,z1-z0);strip(length,v['DK_s']/1000,lambda u,z0=z0,z1=z1:z0+u*(z1-z0),2,(x1-x0)/length)
+for code,ztop in [('DG',v['deckmax']),('LG',5.7)]:
+ g=M['girders'][code];h=g['h']/1000;sw=g['sw']/1000;b=g['b']/1000;tf=g['tf']/1000
+ strip(h,sw,lambda u,ztop=ztop,h=h:ztop-h*u,2*g['nweb']);strip(b,tf,lambda u,ztop=ztop,h=h,tf=tf:ztop-h-tf/2,2,1)
+def profile(code,z,n):
+ global A,S,Q
+ p=M['beams'][code]['hp'];ar=p['A']/1e4;inertia=p['I']/1e8
+ A+=n*ar;S+=n*ar*z;Q+=n*(inertia+ar*z*z)
+profile('BL',v['BLy']/100,2*len(M['bottom_x']))
+profile('IL',1.2-v['ILy']/100,2*len(M['inner_x']))
+for x in M['deck_x']:profile('DL',9.3+v['cam']*(1-(x/8.9)**2)-v['DLy']/100,2)
+for key,end in [('bottom_x',8.9-1.6),('inner_x',v['ibedge'])]:
+ positions=sorted([0,4,end]+M[key]);assert max(b-a for a,b in zip(positions,positions[1:]))<=v['al']+1e-8
+NA=S/A;I=Q-S*S/A;WB=I/NA;WD=I/(v['deckmax']-NA)
+for x,k in [(A*1e4,'Area'),(NA,'NA'),(I*1e8,'Inertia'),(WB*1e6,'WB'),(WD*1e6,'WD')]:close(x,v[k],2e-7)
+assert WB*1e6>=v['Wreq'] and WD*1e6>=v['Wreq'] and I*1e8>=v['Ireq']
+assert any(p['code']=='EBL' and p['n']==18 for p in M['eq'])
+assert any(p['code']=='EIL' and p['n']==22 for p in M['eq'])
+assert sum(p['n'] for p in M['eq'] if p['code'].startswith('EDL'))==12
+report['independent_section']={'area_m2':A,'NA_m':NA,'I_m4':I,'WB_m3':WB,'WD_m3':WD,'Wreq_m3':v['Wreq']/1e6}
+report['ballast_net_kPa']=net;report['beam_ratios']={k:v[k+'ratio'] for k in M['beams']}
+report['framing']={'upper_deck_bottom':'longitudinal','side_lower_deck':'transverse'}
+report['girder_ratios']={k:v[k+'ratio'] for k in M['girders']}
+(W/'independent_verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8');print(json.dumps(report,ensure_ascii=False,indent=2))
