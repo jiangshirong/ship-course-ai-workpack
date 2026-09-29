@@ -1,4 +1,6 @@
-# 船舶课程作业 AI 工作包
+# 船舶生成引擎
+
+> 给出数据，就能造出船来。
 
 **语言 / Languages / Языки：** [中文](README.md) · [English](README.en.md) · [Русский](README.ru.md)
 

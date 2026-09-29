@@ -1,4 +1,4 @@
-# Ship Course AI Work Package
+# Ship Generation Engine
 
 **Languages:** [中文](README.md) · [English](README.en.md) · [Русский](README.ru.md)
 
